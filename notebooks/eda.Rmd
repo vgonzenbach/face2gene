@@ -1,0 +1,243 @@
+---
+title: "Face2Gene Exploratory Analysis"
+author: "Virgilio Gonzenbach"
+date: "6/15/2021"
+output: 
+  html_document:
+    toc: true
+    toc_float: true
+    theme: spacelab
+
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE,
+                      cache = TRUE, 
+                      cache.path = 'cache/eda/', 
+                      fig.path = "figures/eda/")
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+```
+
+
+
+```{r set_up, include=FALSE}
+library(dplyr)
+library(tidyr)
+library(kableExtra)
+library(ROCR)
+library(FactoMineR)
+library(factoextra)
+
+# Load data
+penn_df = read.csv("data/Penn_merged_wideV.csv")[,-1] %>% filter(group != "?") # 3 observations in '?' group
+chop_df = read.csv('data/Chop_merged_wideV_tp1.csv')
+
+df = merge(penn_df, chop_df, all = TRUE, sort = FALSE)
+df[ , c("age_at_photo", "visit_id")] = NULL
+
+df[is.na.data.frame(df)]  = 0
+```
+
+## ROC analysis
+
+Sample sizes:
+
+```{r}
+t(table(df$group)) %>% kable(format="html") %>% kable_styling("striped", full_width = TRUE)
+```
+
+
+```{r}
+df %>% ggplot(aes(x=group, y=X22q11.2.deletion.syndrome, color=group)) + geom_boxplot() + ggtitle("Group means of 22q11.2 deletion syndrome gestalt score")
+```
+
+```{r}
+# Prep data for ROC
+roc_df = df %>% select(group, X22q11.2.deletion.syndrome)
+roc_df$group = ifelse(df$group == '22q', 1, 0) 
+
+# Run ROC
+pred = prediction(roc_df$X22q11.2.deletion.syndrome, roc_df$group)
+perf = performance(pred, "auc")
+```
+
+```{r}
+# Extracting performance metrics
+roc.perf = performance(pred, measure = "tpr", x.measure = "fpr")
+
+# Plot
+plot(roc.perf, main="ROC curve of 22q gestalt score predicting 22q status")
+abline(a=0, b= 1)
+```
+
+Area Under the Curve (AUC): `r round(perf@y.values[[1]],2)`
+
+## PCA
+
+### 22q group
+
+#### Scree
+
+```{r}
+resPCA = PCA(chop_df[,-c(1:7)], scale.unit = FALSE, graph = FALSE)
+fviz_screeplot(resPCA)
+```
+
+#### Loadings
+
+```{r}
+plot_loading = function(resPCA, dim=1){
+  
+  # Extract metrics from PCA object
+  r = resPCA$var$contrib[,dim]
+  filter = r > mean(r, na.rm = TRUE) # only include more than average contributions
+  
+  # Prep data
+  df = data.frame(var=names(r), cor = r, row.names = NULL)[filter, ] %>% drop_na()
+  df = df[order(df$cor, decreasing = TRUE),]
+  df$var = factor(df$var, levels = rev(df$var)) #order before plotting
+  
+  # Plot
+  title = sprintf("PC%s contributions", dim)
+  p = df %>% ggplot(aes(x=var, y=cor)) + geom_col() + coord_flip() + 
+    xlab("Gestalt Score") + ylab("Loading") + ggtitle(title) + 
+    theme_bw() + theme(axis.text.y = element_text(size=5))
+  return(p)
+}
+```
+
+##### PC1
+```{r}
+plot_loading(resPCA, dim=1)
+```
+
+##### PC2
+
+```{r}
+plot_loading(resPCA, dim=2)
+```
+
+##### PC3
+
+```{r}
+plot_loading(resPCA, dim=3)
+```
+
+##### PC4
+
+```{r}
+plot_loading(resPCA, dim=4)
+```
+
+### Whole sample
+
+#### Scree
+
+```{r}
+resPCA = PCA(df[,-c(1:6)], scale.unit = FALSE, graph = FALSE)
+fviz_screeplot(resPCA, barcolor = "blueviolet", barfill="blueviolet")
+```
+
+#### Factor scores
+
+```{r}
+fviz_pca_ind(resPCA, geom = c("point"), col.ind = df$group)
+```
+
+```{r}
+fviz_pca_ind(resPCA, axes = c(3,4), geom = c("point"), col.ind = df$group)
+```
+
+
+#### Loadings
+
+##### PC1
+
+```{r}
+plot_loading(resPCA, dim = 1)
+```
+
+###### ROC Analysis
+
+```{r}
+# Run ROC
+pred = prediction(resPCA$ind$coord[,1], 
+                  ifelse(df$group == '22q', 1, 0))
+perf = performance(pred, "auc")
+```
+
+```{r}
+# Plot
+roc.perf = performance(pred, measure = "tpr", x.measure = "fpr")
+plot(roc.perf, main="ROC curve of PC1 predicting 22q status")
+abline(a=0, b= 1)
+```
+
+Area Under the Curve (AUC): `r round(perf@y.values[[1]],2)`
+
+
+
+##### PC2
+
+```{r}
+plot_loading(resPCA, dim = 2)
+```
+
+##### ROC Analysis
+
+```{r}
+# Prep data
+roc_df = data.frame(PC2 = resPCA$ind$coord[df$group!="22q", 2])
+roc_df$group = df$group[df$group != "22q"]
+
+# Run ROC
+pred = prediction(roc_df$PC2, 
+                  ifelse(roc_df$group == 'NC', 1, 0))
+perf = performance(pred, "auc")
+```
+
+```{r}
+# Plot
+roc.perf = performance(pred, measure = "tpr", x.measure = "fpr")
+plot(roc.perf, main="ROC curve of PC2 predicting SZ or CR status")
+abline(a=0, b= 1)
+```
+
+Area Under the Curve (AUC): `r round(perf@y.values[[1]],2)`
+
+###### PC2: Controls vs SZ
+
+```{r}
+NC_score = resPCA$ind$coord[df$group == "NC", 2]
+SZ_score = resPCA$ind$coord[df$group == "SZ", 2]
+t.test(NC_score, SZ_score)
+effectsize::cohens_d(NC_score, SZ_score)
+```
+
+###### PC2: Controls vs CR
+
+```{r}
+CR_score = resPCA$ind$coord[df$group == "CR", 2]
+t.test(NC_score, CR_score)
+effectsize::cohens_d(NC_score, CR_score)
+```
+
+###### PC2: SZ vs CR
+
+```{r}
+t.test(SZ_score, CR_score)
+effectsize::cohens_d(SZ_score, CR_score)
+```
+
+##### PC3
+
+```{r}
+plot_loading(resPCA, dim = 3)
+```
+
+##### PC4
+
+```{r}
+plot_loading(resPCA, dim = 4)
+```
+
