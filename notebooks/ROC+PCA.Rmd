@@ -27,6 +27,7 @@ library(kableExtra)
 library(ROCR)
 library(FactoMineR)
 library(factoextra)
+library(psych)
 
 # Load data
 penn_df = read.csv("data/Penn_merged_wideV.csv")[,-1] %>% filter(group != "?") # 3 observations in '?' group
@@ -61,7 +62,7 @@ pred = prediction(roc_df$X22q11.2.deletion.syndrome, roc_df$group)
 perf = performance(pred, "auc")
 ```
 
-```{r}
+```{r, fig.width=12, fig.height=8}
 # Extracting performance metrics
 roc.perf = performance(pred, measure = "tpr", x.measure = "fpr")
 
@@ -89,8 +90,9 @@ fviz_screeplot(resPCA)
 plot_loading = function(resPCA, dim=1){
   
   # Extract metrics from PCA object
-  r = resPCA$var$contrib[,dim]
-  filter = r > mean(r, na.rm = TRUE) # only include more than average contributions
+  r = resPCA$var$coord[,dim] / sqrt(resPCA$eig[dim,1])
+
+  filter = r^2 > mean(r^2, na.rm = TRUE) # only include loadings with more than average contributions
   
   # Prep data
   df = data.frame(var=names(r), cor = r, row.names = NULL)[filter, ] %>% drop_na()
@@ -101,31 +103,31 @@ plot_loading = function(resPCA, dim=1){
   title = sprintf("PC%s contributions", dim)
   p = df %>% ggplot(aes(x=var, y=cor)) + geom_col() + coord_flip() + 
     xlab("Gestalt Score") + ylab("Loading") + ggtitle(title) + 
-    theme_bw() + theme(axis.text.y = element_text(size=5))
+    theme_bw() + theme(axis.text.y = element_text(size=10))
   return(p)
 }
 ```
 
 ##### PC1
-```{r}
+```{r, fig.width=12, fig.height=8}
 plot_loading(resPCA, dim=1)
 ```
 
 ##### PC2
 
-```{r}
+```{r, fig.width=12, fig.height=8}
 plot_loading(resPCA, dim=2)
 ```
 
 ##### PC3
 
-```{r}
+```{r, fig.width=12, fig.height=8}
 plot_loading(resPCA, dim=3)
 ```
 
 ##### PC4
 
-```{r}
+```{r, fig.width=12, fig.height=8}
 plot_loading(resPCA, dim=4)
 ```
 
@@ -153,7 +155,7 @@ fviz_pca_ind(resPCA, axes = c(3,4), geom = c("point"), col.ind = df$group)
 
 ##### PC1
 
-```{r}
+```{r, fig.width=12, fig.height=8}
 plot_loading(resPCA, dim = 1)
 ```
 
@@ -166,7 +168,7 @@ pred = prediction(resPCA$ind$coord[,1],
 perf = performance(pred, "auc")
 ```
 
-```{r}
+```{r, fig.width=12, fig.height=8}
 # Plot
 roc.perf = performance(pred, measure = "tpr", x.measure = "fpr")
 plot(roc.perf, main="ROC curve of PC1 predicting 22q status")
@@ -175,11 +177,9 @@ abline(a=0, b= 1)
 
 Area Under the Curve (AUC): `r round(perf@y.values[[1]],2)`
 
-
-
 ##### PC2
 
-```{r}
+```{r, fig.width=12, fig.height=8}
 plot_loading(resPCA, dim = 2)
 ```
 
@@ -196,7 +196,7 @@ pred = prediction(roc_df$PC2,
 perf = performance(pred, "auc")
 ```
 
-```{r}
+```{r, fig.width=12, fig.height=8}
 # Plot
 roc.perf = performance(pred, measure = "tpr", x.measure = "fpr")
 plot(roc.perf, main="ROC curve of PC2 predicting SZ or CR status")
@@ -205,7 +205,7 @@ abline(a=0, b= 1)
 
 Area Under the Curve (AUC): `r round(perf@y.values[[1]],2)`
 
-###### PC2: Controls vs SZ
+###### PC2: Normal Controls vs Schizophrenia
 
 ```{r}
 NC_score = resPCA$ind$coord[df$group == "NC", 2]
@@ -214,7 +214,7 @@ t.test(NC_score, SZ_score)
 effectsize::cohens_d(NC_score, SZ_score)
 ```
 
-###### PC2: Controls vs CR
+###### PC2: Normal Controls vs Clinical Risk
 
 ```{r}
 CR_score = resPCA$ind$coord[df$group == "CR", 2]
@@ -222,7 +222,7 @@ t.test(NC_score, CR_score)
 effectsize::cohens_d(NC_score, CR_score)
 ```
 
-###### PC2: SZ vs CR
+###### PC2: Schizophrenia vs Clinical Risk
 
 ```{r}
 t.test(SZ_score, CR_score)
@@ -231,13 +231,13 @@ effectsize::cohens_d(SZ_score, CR_score)
 
 ##### PC3
 
-```{r}
+```{r, fig.width=12, fig.height=8}
 plot_loading(resPCA, dim = 3)
 ```
 
 ##### PC4
 
-```{r}
+```{r, fig.width=12, fig.height=8}
 plot_loading(resPCA, dim = 4)
 ```
 
