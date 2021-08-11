@@ -1,7 +1,7 @@
 ---
 title: "Face2Gene Exploratory Analysis"
 author: "Virgilio Gonzenbach"
-date: "6/15/2021"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: 
   html_document:
     toc: true
@@ -13,14 +13,14 @@ output:
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE,
                       cache = TRUE, 
-                      cache.path = 'cache/eda/', 
-                      fig.path = "figures/eda/")
+                      cache.path = 'cache/ROC+PCA/', 
+                      fig.path = "figures/ROC+PCA/")
 knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
 ```
 
 
 
-```{r set_up, include=FALSE}
+```{r load, include=FALSE}
 library(dplyr)
 library(tidyr)
 library(kableExtra)
@@ -28,63 +28,96 @@ library(ROCR)
 library(FactoMineR)
 library(factoextra)
 library(psych)
+library(pROC)
 
 # Load data
 penn_df = read.csv("data/Penn_merged_wideV.csv")[,-1] %>% filter(group != "?") # 3 observations in '?' group
 chop_df = read.csv('data/Chop_merged_wideV_tp1.csv')
 
+# Exclude columns with only zeros
+get_zero_cols = function(df){
+  num_zeros = df %>% sapply(function(x) x == 0) %>% colSums()
+  prop_zeros = num_zeros / nrow(chop_df)
+  zero_cols = names(which(prop_zeros == 1))
+  return(zero_cols)
+}
+
+chop_df = chop_df %>% select(-all_of(get_zero_cols(chop_df)))
+
+# Merge data
 df = merge(penn_df, chop_df, all = TRUE, sort = FALSE)
 df[ , c("age_at_photo", "visit_id")] = NULL
 
+# Fill missing values with 0
 df[is.na.data.frame(df)]  = 0
+
+# Set seed for reproducibility
+set.seed(42)
 ```
 
 ## ROC analysis
 
+The ROC analysis presented here was performed on the data including all groups (22q, CR, ZR, NC). Groups status was coded as "22q" or "not22q". 
+
 Sample sizes:
 
 ```{r}
+# Print sample sizes
 t(table(df$group)) %>% kable(format="html") %>% kable_styling("striped", full_width = TRUE)
 ```
 
 
 ```{r}
+# Plot 22q gestalt score values per group
 df %>% ggplot(aes(x=group, y=X22q11.2.deletion.syndrome, color=group)) + geom_boxplot() + ggtitle("Group means of 22q11.2 deletion syndrome gestalt score")
 ```
 
-```{r}
+```{r run_roc, include=FALSE}
 # Prep data for ROC
 roc_df = df %>% select(group, X22q11.2.deletion.syndrome)
 roc_df$group = ifelse(df$group == '22q', 1, 0) 
 
 # Run ROC
-pred = prediction(roc_df$X22q11.2.deletion.syndrome, roc_df$group)
-perf = performance(pred, "auc")
+resROC = roc(group ~ X22q11.2.deletion.syndrome, data=roc_df)
 ```
 
-```{r, fig.width=12, fig.height=8}
-# Extracting performance metrics
-roc.perf = performance(pred, measure = "tpr", x.measure = "fpr")
+### ROC curve
 
-# Plot
-plot(roc.perf, main="ROC curve of 22q gestalt score predicting 22q status")
-abline(a=0, b= 1)
+ROC curve with optimal cut-off point (Specificity, Sensitivity). Optimal cut-off is defined as the point that maximizes Youden's index defined as $J = sensitivity + specificity − 1$
+
+```{r print_roc}
+# Plot ROC results
+plot(resROC, main="ROC curve of 22q vs not 22q (whole sample)", print.thres="best", print.thres.best.method="youden")
+auc(resROC)
+ci.auc(resROC)
 ```
-
-Area Under the Curve (AUC): `r round(perf@y.values[[1]],2)`
 
 ## PCA
 
-### 22q group
+PCA was performed without scaling gestalt scores (covariance PCA).
+
+### Whole sample
 
 #### Scree
 
 ```{r}
-resPCA = PCA(chop_df[,-c(1:7)], scale.unit = FALSE, graph = FALSE)
-fviz_screeplot(resPCA)
+resPCA = PCA(df[,-c(1:6)], scale.unit = FALSE, graph = FALSE)
+fviz_screeplot(resPCA, barcolor = "blueviolet", barfill="blueviolet")
 ```
 
-#### Loadings
+#### Factor scores
+
+```{r}
+fviz_pca_ind(resPCA, geom = c("point"), col.ind = df$group)
+```
+
+```{r}
+fviz_pca_ind(resPCA, axes = c(3,4), geom = c("point"), col.ind = df$group)
+```
+
+#### Parallel Analysis
+
+Needs work.
 
 ```{r}
 plot_loading = function(resPCA, dim=1){
@@ -108,7 +141,148 @@ plot_loading = function(resPCA, dim=1){
 }
 ```
 
+#### PC1
+
+##### Loadings
+
+```{r, fig.width=12, fig.height=8}
+plot_loading(resPCA, dim = 1)
+```
+
+##### ROC Analysis 
+
+```{r boxplot_PC1}
+# Run ROC
+roc_df = data.frame(score = resPCA$ind$coord[,1], group = df$group)
+roc_df %>% ggplot(aes(x=group, y=score, color=group)) + geom_boxplot() + ggtitle("Group means of PC1 score") + ylab("PC1 score")
+```
+
+
+```{r run_roc2, include=FALSE}
+roc_df$group = ifelse(df$group == '22q', 1, 0)
+resROC_PCA = roc(group ~ score, data = roc_df)
+```
+
+
+```{r plot_roc2}
+plot(resROC_PCA, main = "ROC curve of 22q vs not with PC1", print.thres="best", print.thres.best.method="youden")
+auc(resROC_PCA)
+ci.auc(resROC_PCA)
+```
+
+##### Compare ROCs: 22q Gestalt score vs PC1 as input
+
+```{r delong}
+plot(resROC, col="blue")
+plot(resROC_PCA, col="red", add=TRUE)
+legend("bottomright", 
+  legend = c("22q Gestalt Score", "PC1"), 
+  col = c("blue", "red"), 
+  pch = c(17,19), 
+  bty = "n", 
+  pt.cex = 2, 
+  cex = 1.2, 
+  text.col = "black", 
+  horiz = F , 
+  inset = c(0.1, 0.1))
+roc.test(resROC, resROC_PCA, method = "delong")
+```
+
+A weighted combination of syndrome scores improves the AUC relative to predicting 22q status based on only 22q syndrome scores. 
+
+#### PC2
+
+##### Loadings
+
+```{r, fig.width=12, fig.height=8}
+plot_loading(resPCA, dim = 2)
+```
+
+##### ROC Analysis
+
+```{r boxplot_pc2}
+# Run ROC
+roc_df = data.frame(PC2 = resPCA$ind$coord[df$group!="22q", 2])
+roc_df$group = df$group[df$group != "22q"]
+roc_df %>% ggplot(aes(x=group, y=PC2, color=group)) + geom_boxplot() + ggtitle("Group means of PC2 score") + ylab("PC2 score")
+```
+
+
+```{r run_roc3, include=FALSE}
+roc_df$group = ifelse(roc_df$group != 'NC', 1, 0)
+resROC_PC2 = roc(group ~ PC2, data = roc_df)
+```
+
+
+```{r plot_roc3}
+plot(resROC_PC2, main = "ROC curve of PS vs NC with PC2", print.thres="best", print.thres.best.method="youden")
+auc(resROC_PC2)
+ci.auc(resROC_PC2)
+```
+
+###### T-test: Normal Controls vs Schizophrenia
+
+```{r}
+NC_score = resPCA$ind$coord[df$group == "NC", 2]
+SZ_score = resPCA$ind$coord[df$group == "SZ", 2]
+t.test(NC_score, SZ_score)
+effectsize::cohens_d(NC_score, SZ_score)
+```
+
+###### T-test: Normal Controls vs Clinical Risk
+
+```{r}
+CR_score = resPCA$ind$coord[df$group == "CR", 2]
+t.test(NC_score, CR_score)
+effectsize::cohens_d(NC_score, CR_score)
+```
+
+###### T-test: Schizophrenia vs Clinical Risk
+
+```{r}
+t.test(SZ_score, CR_score)
+effectsize::cohens_d(SZ_score, CR_score)
+```
+
+#### PC3
+
+##### Loadings
+
+```{r, fig.width=12, fig.height=8}
+plot_loading(resPCA, dim = 3)
+```
+
+```{r}
+data.frame(score = resPCA$ind$coord[,3], group = df$group) %>% ggplot(aes(x=group, y=score, color=group)) + geom_boxplot() + ggtitle("Group means of PC3 score") + ylab("PC3 score")
+```
+
+#### PC4
+
+##### Loadings
+
+```{r, fig.width=12, fig.height=8}
+plot_loading(resPCA, dim = 4)
+```
+
+##### Group means
+
+```{r}
+data.frame(score = resPCA$ind$coord[,4], group = df$group) %>% ggplot(aes(x=group, y=score, color=group)) + geom_boxplot() + ggtitle("Group means of PC4 score") + ylab("PC4 score")
+```
+
+### 22q group
+
+#### Scree
+
+```{r}
+resPCA = PCA(chop_df[,-c(1:7)], scale.unit = FALSE, graph = FALSE)
+fviz_screeplot(resPCA)
+```
+
+#### Loadings
+
 ##### PC1
+
 ```{r, fig.width=12, fig.height=8}
 plot_loading(resPCA, dim=1)
 ```
@@ -130,114 +304,3 @@ plot_loading(resPCA, dim=3)
 ```{r, fig.width=12, fig.height=8}
 plot_loading(resPCA, dim=4)
 ```
-
-### Whole sample
-
-#### Scree
-
-```{r}
-resPCA = PCA(df[,-c(1:6)], scale.unit = FALSE, graph = FALSE)
-fviz_screeplot(resPCA, barcolor = "blueviolet", barfill="blueviolet")
-```
-
-#### Factor scores
-
-```{r}
-fviz_pca_ind(resPCA, geom = c("point"), col.ind = df$group)
-```
-
-```{r}
-fviz_pca_ind(resPCA, axes = c(3,4), geom = c("point"), col.ind = df$group)
-```
-
-
-#### Loadings
-
-##### PC1
-
-```{r, fig.width=12, fig.height=8}
-plot_loading(resPCA, dim = 1)
-```
-
-###### ROC Analysis
-
-```{r}
-# Run ROC
-pred = prediction(resPCA$ind$coord[,1], 
-                  ifelse(df$group == '22q', 1, 0))
-perf = performance(pred, "auc")
-```
-
-```{r, fig.width=12, fig.height=8}
-# Plot
-roc.perf = performance(pred, measure = "tpr", x.measure = "fpr")
-plot(roc.perf, main="ROC curve of PC1 predicting 22q status")
-abline(a=0, b= 1)
-```
-
-Area Under the Curve (AUC): `r round(perf@y.values[[1]],2)`
-
-##### PC2
-
-```{r, fig.width=12, fig.height=8}
-plot_loading(resPCA, dim = 2)
-```
-
-##### ROC Analysis
-
-```{r}
-# Prep data
-roc_df = data.frame(PC2 = resPCA$ind$coord[df$group!="22q", 2])
-roc_df$group = df$group[df$group != "22q"]
-
-# Run ROC
-pred = prediction(roc_df$PC2, 
-                  ifelse(roc_df$group == 'NC', 1, 0))
-perf = performance(pred, "auc")
-```
-
-```{r, fig.width=12, fig.height=8}
-# Plot
-roc.perf = performance(pred, measure = "tpr", x.measure = "fpr")
-plot(roc.perf, main="ROC curve of PC2 predicting SZ or CR status")
-abline(a=0, b= 1)
-```
-
-Area Under the Curve (AUC): `r round(perf@y.values[[1]],2)`
-
-###### PC2: Normal Controls vs Schizophrenia
-
-```{r}
-NC_score = resPCA$ind$coord[df$group == "NC", 2]
-SZ_score = resPCA$ind$coord[df$group == "SZ", 2]
-t.test(NC_score, SZ_score)
-effectsize::cohens_d(NC_score, SZ_score)
-```
-
-###### PC2: Normal Controls vs Clinical Risk
-
-```{r}
-CR_score = resPCA$ind$coord[df$group == "CR", 2]
-t.test(NC_score, CR_score)
-effectsize::cohens_d(NC_score, CR_score)
-```
-
-###### PC2: Schizophrenia vs Clinical Risk
-
-```{r}
-t.test(SZ_score, CR_score)
-effectsize::cohens_d(SZ_score, CR_score)
-```
-
-##### PC3
-
-```{r, fig.width=12, fig.height=8}
-plot_loading(resPCA, dim = 3)
-```
-
-##### PC4
-
-```{r, fig.width=12, fig.height=8}
-plot_loading(resPCA, dim = 4)
-```
-
