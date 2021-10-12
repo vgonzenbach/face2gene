@@ -1,7 +1,7 @@
 ---
 title: "Predicting PS status with 22q characteristics"
 author: "Virgilio Gonzenbach"
-date: "9/3/2021"
+date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: html_document
 ---
 
@@ -14,7 +14,7 @@ knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
 ```
 
 
-```{r load}
+```{r load, include=FALSE}
 library(dplyr)
 library(tidyr)
 library(FactoMineR)
@@ -23,6 +23,7 @@ library(e1071)
 library(caret)
 library(pander)
 library(pROC)
+library(kableExtra)
 
 chop_df = read.csv('data/Chop_merged_wideV_tp1.csv')
 penn_df = read.csv("data/Penn_merged_wideV.csv")[,-1] %>% filter(group != "?") # 3 observations in '?' group
@@ -38,28 +39,44 @@ get_zero_cols = function(df){
 chop_df = chop_df %>% select(-all_of(get_zero_cols(chop_df)))
 penn_df = penn_df %>% select(-all_of(get_zero_cols(penn_df)))
 
-## Merge data
-merged_df = merge(penn_df, chop_df, all = TRUE, sort = FALSE)
-merged_df[ , c("age_at_photo", "visit_id")] = NULL
-
-## Fill missing values with 0
-merged_df[is.na.data.frame(merged_df)] = 0
-
 # Set seed for reproducibility
 seed=42
 set.seed(seed)
 ```
 
-## 1. Exploring characteristics of 22q sample with PCA
 
-### Scree
+In this analysis, psychosis spectrum (PS) status is predicted based on 22q11.2 deletion syndrome (22q) characteristics.  
+
+- First, PCA is performed on the 22q sample to estimate the relative contributions, i.e. the loadings, of each gestalt score to the axes of greatest variability (PCs) in this group.  
+
+- These loadings are then used to compute "22q-like" factor scores for the NC and PS groups: two-sample t-tests show the two groups differ on PC 2 and 3.   
+
+- ROC analysis shows **PC2 alone correctly predicts PS status 67.8% of the time**, while incorporating PC3 in the prediction does not offer significant improvements.  
+
+- Additionally, Levene’s test shows that **variance from the schizophrenia (SZ) group differs from that of clinical risk (CR) on PC2**.
+
+## 0. Sample sizes
+
+```{r}
+t(table(c(chop_df$group, penn_df$group))) %>% kable(format="html") %>% kable_styling("striped", full_width = TRUE)
+```
+
+## 1. Examining characteristics of 22q sample with PCA
+
+PCA was performed without scaling on the 22q sample alone.
+
+### Scree Plot
 
 ```{r}
 resPCA = PCA(chop_df[,-c(1:7)], scale.unit = FALSE, graph = FALSE, ncp=length(chop_df[,-c(1:7)]))
 fviz_screeplot(resPCA)
 ```
 
+Using the "elbow rule", subsequent analysis will focus on the first 4 PCs. 
+
 ### Loadings
+
+Loadings for the first 4 PCs are plotted below.
 
 ```{r}
 get_loadings = function(resPCA, dim=1){
@@ -115,7 +132,9 @@ plot_loadings(resPCA, dim=4)
 
 ## 2. Testing for differences in 22q-like factor scores between PS and NC
 
-For an $SVD(X) = UDV^T$, multiplied matrix of relevant gestalt scores from PS and NC groups (i.e. matrix $G$) by matrix $V$: $GV$. Examined first 4 components.
+For the Penn sample (i.e. PS and NC groups), 4 factor scores are computed using the loadings above as weights in a linear combination of relevant gestalt scores (i.e. those gave hits in the 22q sample).
+
+Note: any reference to PCs/factor scores below refers to those computed for the Penn sample. 
 
 ```{r}
 demographics = c("bbl_id", "case_id", "sex", "race", "age", "age_at_photo")
@@ -131,8 +150,8 @@ weigh_scores = function(df, coefs){
   df[, nohits] = 0 # set missing to zero to define columns
   
   # linear combination of gestalt scores
-  gscores.mat = as.matrix(df[, names(coefs)])
-  weighted_score = as.vector(gscores.mat %*% coefs)
+  scores.mat = as.matrix(df[, names(coefs)])
+  weighted_score = as.vector(scores.mat %*% coefs)
   return(weighted_score)
 }
 
@@ -141,87 +160,122 @@ weigh_scores2 = function(df, resPCA){
   nohits = rownames(resPCA$var$coord)[which(!(rownames(resPCA$var$coord) %in% colnames(df)))] 
   df[, nohits] = 0 # set missing to zero to define columns
    
-  gscores.mat = as.matrix(df[, rownames(resPCA$var$coord)]) 
-  weighted_score = gscores.mat %*% resPCA$svd$V
+  scores.mat = as.matrix(df[, rownames(resPCA$var$coord)]) 
+  weighted_score = scores.mat %*% resPCA$svd$V
   
   return(weighted_score)
 }
 ```
 
-### weighted score 1
+### PC 1
+
+No significant differences between groups.
 
 ```{r}
-gscore1 = weigh_scores(df, get_loadings(resPCA, 1))
-t.test(gscore1[df$group == "NC"], gscore1[df$group == "PS"])
+PC1 = weigh_scores(df, get_loadings(resPCA, 1))
+NC = df$group == "NC"
+PS = df$group == "PS"
+
+res.t.test = t.test(PC1[NC], PC1[PS])
+names(res.t.test$estimate) = c("mean of NC", "mean of PS")
+res.t.test
 ```
 
-### weighted score 2
+### PC 2
+
+PC2 shows a difference between NC and PS groups.
 
 ```{r}
-gscore2 = weigh_scores(df, get_loadings(resPCA, 2))
-t.test(gscore2[df$group == "NC"], gscore2[df$group == "PS"])
+PC2 = weigh_scores(df, get_loadings(resPCA, 2))
+
+res.t.test = t.test(PC2[NC], PC2[PS])
+names(res.t.test$estimate) = c("mean of NC", "mean of PS")
+res.t.test
 ```
 
-### weighted score 3
+### PC 3
+
+PC3 shows a difference between NC and PS groups.
 
 ```{r}
-gscore3 = weigh_scores(df, get_loadings(resPCA, 3))
-t.test(gscore3[df$group == "NC"], gscore3[df$group == "PS"])
+PC3 = weigh_scores(df, get_loadings(resPCA, 3))
+
+res.t.test = t.test(PC3[NC], PC3[PS])
+names(res.t.test$estimate) = c("mean of NC", "mean of PS")
+res.t.test
 ```
 
-### weighted score 4
+### PC 4
 
+No significant difference between groups. 
 ```{r}
-gscore4 = weigh_scores(df, get_loadings(resPCA, 4))
-t.test(gscore4[df$group == "NC"], gscore4[df$group == "PS"])
+PC4 = weigh_scores(df, get_loadings(resPCA, 4))
+
+res.t.test = t.test(PC4[NC], PC4[PS])
+names(res.t.test$estimate) = c("mean of NC", "mean of PS")
+res.t.test
 ```
 
-### Plot of weighted scores 2 and 3
+### Plot PC2 and PC3
+
+PCs 2 and 3 show significant differences between PS and NC.
 
 ```{r}
-gscores_df = data.frame(group = as.factor(df$group),
-          gscore2, gscore3) 
-gscores_df %>% ggplot(aes(x=gscore2, y=gscore3, color = group)) + geom_point() + 
-  geom_point(data = gscores_df %>% group_by(group) %>% summarize_all(mean), size = 4, shape = 17)
+scores_df = data.frame(group = factor(df$group, levels = rev(unique(df$group))),
+          PC2, PC3) 
+scores_df %>% ggplot(aes(x=PC2, y=PC3, color = group)) + geom_point() + 
+  geom_point(data = scores_df %>% group_by(group) %>% summarize_all(mean), size = 4, shape = 17)
 ```
 
+### SZ vs CR
+
+By examining the same PCs in only SZ and CR groups, we see a difference in variances on PC2.
+
 ```{r}
-# gscores_df = data.frame(group = as.factor(penn_df$group),
-#           gscore2, gscore3) 
-# gscores_df %>% filter(group!= "NC") %>%  ggplot(aes(x=gscore2, y=gscore3, color = group)) + geom_point() + 
-#   geom_point(data = gscores_df %>% filter(group!= "NC") %>% group_by(group) %>% summarize_all(mean), size = 4, shape = 17)
+tmp_df = data.frame(group = as.factor(penn_df$group),
+          PC2, PC3) %>% filter(group!= "NC") 
+tmp_df %>% ggplot(aes(x=PC2, y=PC3, color = group)) + geom_point() + 
+  geom_point(data = tmp_df %>%  group_by(group) %>% summarize_all(mean), size = 4, shape = 17) + scale_color_manual(values = c("orange", "purple"))
+```
+
+#### PC2: T-test
+
+```{r}
+SZ = penn_df$group=="SZ"
+CR = penn_df$group=="CR"
+
+res.t.test = t.test(PC2[SZ], PC2[CR])
+names(res.t.test$estimate) = c("mean of SZ", "mean of CR")
+res.t.test
+```
+
+#### PC2: Levene's test
+
+```{r}
+car::leveneTest(tmp_df$PC2, tmp_df$group)
+```
+
+#### PC3: T-test
+
+No differences related to PC3.
+
+```{r}
+res.t.test = t.test(PC3[SZ], PC3[CR])
+names(res.t.test$estimate) = c("mean of SZ", "mean of CR")
+res.t.test
+```
+
+#### PC3: Levene's test
+
+```{r}
+car::leveneTest(tmp_df$PC3, tmp_df$group)
 ```
 
 ## 3. Predicting PS status based on 22q-like components 2 and 3
 
-independent 10-fold crossvalidation to pick best cost parameter for SVM.
+ROC curves are plotted for PCs 2 and 3. 
 
 ```{r}
-library(e1071)
-
-# Determine cost w. cross-validation
-set.seed(42)
-tune.out = tune(svm, group ~ ., data=gscores_df, kernel="linear", type = "C-classification",
-                ranges = list(cost=c(0.001, 0.01, 0.1, 1, 5, 10, 100)))
-summary(tune.out)
-cost.opt = tune.out$best.model$cost
-```
-
-#### ROC of weighted scores 2 and 3 to predict PS vs NC
-
-
-```{r}
-svm.fit = svm(group ~ ., data=gscores_df, kernel="linear", type="C-classification", cost = cost.opt, decision.values=TRUE)
-resROC1 = roc(gscores_df$group, as.vector(svm.fit$decision.values))
-```
-
-```{r}
-svm.fit = svm(group ~ ., data=gscores_df, kernel="linear", type="C-classification", cost = cost.opt, decision.values=TRUE)
-log.fit = glm(group ~ ., data=gscores_df, family=binomial)
-
-resROC1 = roc(gscores_df$group, as.vector(svm.fit$decision.values))
-resROC2 = roc(response = gscores_df$group, predictor = log.fit$fitted.values)
-
 plotROCs = function(roc1, roc2, main, legends){
   plot(roc1, col="blue", main=main)
   plot(roc2, col="red", add=TRUE)
@@ -237,131 +291,35 @@ plotROCs = function(roc1, roc2, main, legends){
     inset = c(0.1, 0.1))
   roc.test(roc1, roc2, method = "delong")
 }
-
-plotROCs(resROC1, resROC2, main = "ROC curves of PS vs NC based on 22q-like weighted scores 2 and 3", legends = c("SVM", "Logistic regression"))
-
 ```
 
-Different direction is being set for the 2nd ROC. Issues?
+### PC2
 
-##### Cross-validated ROC
-
-10-fold cross-validation stratified by group was performed to produce out-of-sample predictions for the whole data set. Results were concatenated (and ordered) to plot a "cross-validated" ROC curve.
-
-Note: Same folds used for all cross-validated ROCs
-
-```{r}
-cv.roc = function(df, folds, model=c("svm", "log.reg")){
-  fitted = vector(mode="double")
-  for(fold.ind in folds){
-    train_df = df[-fold.ind, ]
-    test_df = df[fold.ind, ]
-  
-    # fit svm
-    if(model=="svm"){
-      svm.fit = svm(group ~ ., data = train_df, kernel="linear", type="C-classification", cost = cost.opt)
-      fitted = c(fitted, as.vector(attributes(predict(svm.fit, test_df, decision.values = TRUE))$decision.values))
-    }else if(model=="log.reg"){
-      log.fit = glm(group ~ ., data=train_df, family = binomial)
-      fitted = c(fitted, predict(log.fit, test_df))
-    }#else log.reg
-  }
-  
-  fitted = fitted[unname(unlist(folds))]
-  res = roc(df$group, fitted)
-  return(res)
-}
-
-set.seed(42)
-folds = createFolds(gscores_df$group, k=10)
-
-resROC_SVM.CV = cv.roc(gscores_df, folds, "svm")
-resROC_log.CV = cv.roc(gscores_df, folds, "log.reg")
-
-plotROCs(resROC_SVM.CV, resROC_log.CV, main="ROC curves of PS vs NC with on 22q-like weighted scores 2 and 3 (CV)", legends=c("SVM", "Log.Reg"))
+```{r, message=FALSE}
+resROCPC2 = roc(group ~ PC2, scores_df)
+plot(resROCPC2, main = sprintf("PC2 predictive of PS status (AUC = %s)", round(auc(resROCPC2),3)))
+ci(resROCPC2)
 ```
 
-AUC dependent on cross
+### PC3
 
-Seed = 1
-
-```{r}
-set.seed(1)
-folds.e = createFolds(gscores_df$group, k=10)
-cv.roc(gscores_df, folds.e, "svm")
+```{r, message=FALSE}
+resROCPC3 = roc(group ~ PC3, scores_df)
+plot(resROCPC3, main = sprintf("PC3 predictive of PS status (AUC = %s)", round(auc(resROCPC3),3)))
+ci(resROCPC3)
 ```
 
-Seed = 2
+### PC2 compared to logistic regression with PC2 and PC3
 
-```{r}
-set.seed(23)
-folds.e = createFolds(gscores_df$group, k=10)
-cv.roc(gscores_df, folds.e, "svm")
+A logistic regression model incorporating PCs 2 and 3 does not improve prediction compared to PC2 alone.
+
+```{r, message=FALSE, warning=FALSE}
+fitted.values = glm(group~., scores_df, family = binomial)$fitted.values
+resROC.log = roc(scores_df$group, fitted.values)
+plotROCs(resROCPC2, resROC.log, main="ROC curves of PC2 and logistic regression model", legends=c("PC2", "Log. Reg."))
 ```
 
-#### ROC of PS prediction based on full set of original features 
+## Conclusion
 
-Why is AUC 1?
-
-```{r, warning=FALSE}
-penn_df4svm = data.frame(group = as.factor(recode(penn_df$group, SZ = "PS", CR = "PS")), penn_df[,-c(1:7)])
-
-# RTune cost parameter
-set.seed(42)
-tune.out = tune(svm, group ~., data=penn_df4svm, kernel="linear", type = "C-classification",
-                ranges = list(cost=c(0.001, 0.01, 0.1, 1, 5, 10, 100)))
-cost.opt = tune.out$best.model$cost
-
-svm.fit = svm(group ~ ., data=penn_df4svm, kernel="linear", type="C-classification", cost = cost.opt, decision.values=TRUE)
-
-resROC_svm.full = roc(response = penn_df$group, predictor = as.vector(svm.fit$decision.values))
-
-plot(resROC_svm.full, main="ROC curve of SVM with all original features")
-auc(resROC_svm.full)
-```
-
-##### Cross validated ROC
-
-```{r, warning=FALSE}
-resROC_svm.full.cv = cv.roc(penn_df4svm, folds, "svm")
-plot(resROC_svm.full.cv, main="ROC curve of SVM with all original features (SVM)")
-auc(resROC_svm.full.cv)
-```
-
-Compare to ROC of SVM model with only 2nd and 3rd weighted score.
-
-```{r}
-plotROCs(resROC_SVM.CV, resROC_svm.full.cv, main="Cross-validated ROC for SVM", legends = c("2nd and 3rd weighted scores", "all orig. scores"))
-```
-
-#### With all 22q-like PCs
-
-```{r}
-# get weighted scores for all 
-# SVM
-
-gscores_df = data.frame(group = as.factor(df$group), weigh_scores2(df, resPCA))
-colnames(gscores_df)[2:(ncol(gscores_df))] = paste0("gscore", 1:(length(gscores_df) - 1))
-
-# SVM
-set.seed(42)
-tune.out = tune(svm, group ~., data=gscores_df, kernel="linear", type = "C-classification",
-                ranges = list(cost=c(0.001, 0.01, 0.1, 1, 5, 10, 100)))
-cost.opt = tune.out$best.model$cost
-
-svm.fit = svm(group ~ ., data=gscores_df, kernel="linear", type="C-classification", cost = cost.opt, decision.values=TRUE)
-
-resROC_svm.full = roc(response = penn_df$group, predictor = as.vector(svm.fit$decision.values))
-
-plot(resROC_svm.full, main="ROC curve of SVM with all original features")
-auc(resROC_svm.full)
-```
-
-##### Cross-validated ROC
-
-```{r}
-resROC_svm.full.cv = cv.roc(gscores_df, folds, "svm")
-plotROCs(resROC_SVM.CV, resROC_svm.full.cv, main="Cross-validated ROC for SVM", legends = c("2nd and 3rd weighted scores", "all weighted scores"))
-```
-
-
+- PC2 alone is predictive of PS status with an AUC of `r round(pROC::auc(resROCPC2), 3)`!
+- There are variance differences on PC2 between PS groups (SZ vs CR).
