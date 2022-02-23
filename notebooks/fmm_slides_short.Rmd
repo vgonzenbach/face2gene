@@ -1,0 +1,411 @@
+---
+title: "face2gene:"
+subtitle: "Latent Profile Analysis within Diagnosis"
+author: "Virgilio Gonzenbach, Kelly Clark, Russell T. Shinohara </br> vgonzenb@pennmedicine.upenn.edu"
+institute: "PennSIVE"
+date: "`r Sys.Date()`"
+output:
+  xaringan::moon_reader:
+    chakra: style/libs/remark-latest.min.js
+    lib_dir: style/libs
+    css: style/penn.css
+    mathjax: style/MathJax-master/MathJax.js?config=TeX-MML-AM_HTMLorMML
+    nature:
+      highlightStyle: github
+      highlightLines: true
+      countIncrementalSlides: false
+---
+
+```{r setup, include=FALSE}
+options(htmltools.dir.version = FALSE)
+knitr::opts_chunk$set(echo = FALSE,
+                      warning = FALSE,
+                      cache = FALSE,
+                      dpi = 250)
+knitr::opts_chunk$set(fig.width=8, fig.height=6) 
+knitr::opts_chunk$set(out.width = 675, out.height = 450)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+```
+
+```{r, message=FALSE}
+library(tidyr)
+library(dplyr)
+library(ggplot2)
+library(mclust)
+library(FactoMineR)
+library(kableExtra)
+library(grid)
+library(gridExtra)
+library(gridBase)
+library(apa)
+
+chop_df = read.csv('data/Chop_merged_wideV_tp1.csv')
+penn_df = read.csv("data/Penn_merged_wideV.csv")[,-1] %>% filter(group != "?") # 3 observations in '?' group
+
+# Exclude columns with only zeros
+get_zero_cols = function(df){
+  num_zeros = df %>% sapply(function(x) x == 0) %>% colSums()
+  prop_zeros = num_zeros / nrow(df)
+  zero_cols = names(which(num_zeros == nrow(df)))
+  return(zero_cols)
+}
+
+get_loadings = function(resPCA, dim=1){
+  # Extract metrics from PCA object
+  r = resPCA$var$coord[, dim] / sqrt(resPCA$eig[dim])
+  # is equal to 
+  return(r)
+}
+
+plot_loadings = function(resPCA, dim=1, flip=TRUE){
+  # Plot loadings
+  
+  margin_spacer <- function(x) {
+  # where x is the column in your dataset
+    left_length <- nchar(levels(factor(x)))[1]
+    if (left_length > 8) {
+      return((left_length - 8) * 4)
+    } else{
+      return(0)
+    }
+      
+  }
+
+  r = get_loadings(resPCA, dim)
+  filter = r^2 > mean(r^2, na.rm = TRUE)
+  
+  # Prep data
+  df = data.frame(var=names(r), cor = r, row.names = NULL)[filter, ] %>% drop_na()
+  df = df[order(df$cor, decreasing = TRUE),]
+  df$var = factor(df$var, levels = rev(df$var)) #order before plotting
+  
+  # Plot
+  title = sprintf("PC%s loadings", dim)
+  p = df %>% ggplot(aes(x=var, y=cor)) + geom_col() + 
+    xlab("Gestalt Score") + ylab("Loading") + ggtitle(title) + 
+    theme_bw() 
+  
+  if(flip){
+    p = p + coord_flip() + theme(axis.text.y = element_text(size=10))
+  }else{
+    p = p + theme(axis.text.x = element_text(size=10, angle=45, vjust = 1, hjust = 1),
+                  plot.margin = margin(l = 0 + margin_spacer(df$var)))
+  }
+  
+  return(p)
+}
+
+weigh_scores2 = function(df, resPCA){
+  # which gestalt scores are missing from penn_df? i.e. PS and NC groups
+  nohits = rownames(resPCA$var$coord)[which(!(rownames(resPCA$var$coord) %in% colnames(df)))] 
+  df[, nohits] = 0 # set missing to zero to define columns
+   
+  scores.mat = as.matrix(df[, rownames(resPCA$var$coord)]) 
+  weighted_score = scores.mat %*% resPCA$svd$V
+  
+  return(weighted_score)
+}
+
+chop_df = chop_df %>% select(-all_of(get_zero_cols(chop_df)))
+penn_df = penn_df %>% select(-all_of(get_zero_cols(penn_df)))
+
+# Set seed for reproducibility
+seed=42
+set.seed(seed)
+```
+
+## Latent Profile Analysis
+
+Latent Profile Analysis, also known as Gaussian Mixture Models, is a model-based clustering approach aimed at finding distinct "profiles", or clusters, based on continuous data. 
+
+The present analysis consists of the following three cases according to sample and pre-processing method selected:
+
+* 22q: PCA was performed on gestalt scores from 22q11.2 deletion sample.
+* PS: PCA was performed on gestalt scores from Psychosis Spectrum (PS) groups.
+* projPS: PS gestalt scores were projected onto 22q PCA results.
+
+Summary of procedure: 
+
+For each analysis section detailed above, an initial LPA was performed on the first $p$ Principal Components (PC)—— $p=4,6,4$ respectively——where $p$ was determined by visual examination of the screeplot of eigenvalues (i.e. elbow rule). Clustering results were visually inspected and dimensions of separation were found to be among the first 2 PCs in all cases.  
+
+Results shown here are based on the clustering results on the first 2 PCs.
+
+---
+
+## 22q: Cluster Visualizations
+
+--
+
+```{r}
+# PCA
+chop_gscores = chop_df[, -c(1:7)]
+resPCA_22q = PCA(chop_gscores, scale.unit = FALSE, graph = FALSE, ncp=length(chop_gscores))
+# fviz_screeplot(resPCA_22q)
+pc_df = data.frame(resPCA_22q$ind$coord[,1:2])
+mod = mclust::Mclust(pc_df)
+```
+
+Taking the first 2 PCs, a `r mclustModelNames(mod$modelName)$type` model with `r mod$G` components was highlighted as the best model per the BIC. The clusters are separated by Dimension 1. 
+
+```{r, fig.show="hold", out.width="50%"}
+plot_loadings(resPCA_22q, dim=1)
+plot(mod, what = "classification")
+```
+
+---
+
+## 22q: External Validation
+
+```{r}
+chi.sex = chisq.test(mod$classification, chop_df$sex)
+chi.race = chisq.test(mod$classification, chop_df$race)
+```
+
+Clustering results were not associated with sex, `r apa(chi.sex)`, or race, `r apa(chi.race)`.
+
+Clusters did show differences in age, however:  
+
+```{r}
+clustering = as.factor(mod$classification)
+aov(chop_df$age ~ clustering) %>% anova_apa()
+```
+
+And PCs were correlated with age also:
+
+```{r}
+## Correlation w age
+r = cor(pc_df, data.frame(age = chop_df$age)) %>% t() %>% as.data.frame()
+p = sapply(pc_df, function(x) cor.test(x, y=chop_df$age)$p.val) %>% as.matrix() %>% t() %>% as.data.frame() 
+rownames(p) = 'p.val'
+rbind(r,p)
+```
+
+---
+
+## 22q: Clustering adjusted for Age
+
+When the age effect on the PCs is corrected for, clustering results differed in their number and shape of distribution  for in the PCs. Sex and race remain independent from these modified clustering results.
+
+```{r, message=FALSE}
+reg_pc_df = data.frame(Dim.1 = residuals(lm(pc_df$Dim.1 ~ chop_df$age)),
+                       Dim.2 = residuals(lm(pc_df$Dim.2 ~ chop_df$age)))
+
+mod = mclust::Mclust(reg_pc_df[, 1:2])
+plot(mod, what = "classification")
+```
+
+---
+
+## 22q: Conclusion
+
+* Clustering results showed age effects.
+* Dimension 1 best separated the clusters in the age-adjusted and non-adjusted results.
+
+For follow up:    
+
+* Examine cluster differences in IQ, psychotic features and facial measurements.
+
+---
+
+## PS: Cluster visualization
+
+--
+
+```{r}
+demographics = c("bbl_id", "case_id", "sex", "race", "age", "age_at_photo")
+ps_df = penn_df %>% filter(group != 'NC')
+
+ps_gscores =  ps_df %>% select(-c(all_of(demographics), group))
+resPCA = PCA(ps_gscores, scale.unit = FALSE, graph = FALSE, ncp=length(chop_gscores))
+pc_df = data.frame(resPCA$ind$coord[,1:2])
+
+mod = Mclust(pc_df)
+```
+
+A `r mclustModelNames(mod$modelName)$type` model with `r mod$G` components was highlighted as the best model by the LPA. The clusters are separated by Dimension 2. 
+
+```{r, fig.show="hold", out.width="50%"}
+plot_loadings(resPCA, dim=2, flip=FALSE)
+plot(mod, what = "classification")
+```
+
+---
+
+## PS: External Validation
+
+```{r}
+chi.sex = chisq.test(mod$classification, ps_df$sex)
+chi.race = chisq.test(mod$classification, ps_df$sex)
+```
+
+Clustering results were not associated with sex, `r apa(chi.sex)` or race `r apa(chi.race)`.
+
+Clusters did not show differences in age :  
+
+```{r}
+clustering = as.factor(mod$classification)
+aov(ps_df$age ~ clustering) %>% anova_apa()
+chi.groups = chisq.test(mod$classification, ps_df$group)
+```
+
+Psychosis Spectrum sub-groups Schizophrenia (SZ) and Clinical Risk (CR) were not correlated with clustering results `r apa(chi.groups)`
+
+---
+
+## PS: PC differences
+
+```{r}
+t.1 = t.test(pc_df$Dim.1[ps_df$group == 'SZ'], pc_df$Dim.1[ps_df$group == 'CR'], var.equal = TRUE) 
+t.2 = t.test(pc_df$Dim.2[ps_df$group == 'SZ'], pc_df$Dim.2[ps_df$group == 'CR'], var.equal = TRUE) 
+```
+
+There were significant differences between the SZ and CR groups on PC 2, `r apa(t.2)`, but not on PC 1, `r apa(t.1)`.
+
+```{r}
+tmp_df = data.frame(pc_df, group = ps_df$group)
+tmp_df %>% ggplot(aes(x=Dim.1, y=Dim.2, color = group)) + geom_point() + 
+  geom_point(data = tmp_df %>%  group_by(group) %>% summarize_all(mean), size = 4, shape = 17) + scale_color_manual(values = c("orange", "purple")) + theme_bw()
+```
+
+---
+
+## PS: Clustering adjusted for Age 
+
+```{r}
+## Correlation w age
+r = cor(pc_df, data.frame(age = ps_df$age)) %>% t() %>% as.data.frame()
+p = sapply(pc_df, function(x) cor.test(x, y=ps_df$age)$p.val) %>% as.matrix() %>% t() %>% as.data.frame() 
+rownames(p) = 'p.val'
+```
+
+Principal component 1 was associated with age $r$ = `r round(r$Dim.1,2)`, *p* = `r round(p$Dim.1, 2)`. However, adjusting PC scores for age did not alter the clustering results.
+
+```{r, include=FALSE, eval=FALSE}
+## Sex
+data.frame(sex = ps_df$sex, pc_df) %>% pivot_longer(cols= colnames(pc_df), names_to = 'PC') %>% ggplot(aes(x=PC, y=value, color=sex)) + geom_boxplot() + ggtitle('PC values by sex')
+
+## Race
+data.frame(sex = ps_df$race, pc_df) %>% pivot_longer(cols= colnames(pc_df), names_to = 'PC') %>% ggplot(aes(x=PC, y=value, color=sex)) + geom_boxplot() + ggtitle('PC values by race')
+---
+reg_pc_df = data.frame(Dim.1 = residuals(lm(pc_df$Dim.1 ~ ps_df$age)),
+                       Dim.2 = residuals(lm(pc_df$Dim.2 ~ ps_df$age)))
+mod = mclust::Mclust(reg_pc_df)
+#summary(mod)
+---
+#The first 2 PCs were then regressed onto age and residuals were used to fit. A `r mclustModelNames(mod$modelName)$type` model with `r mod$G` components was highlighted as the best model per the BIC.
+---
+plot(mod, what = "classification")
+#mclustBootstrapLRT(reg_pc_df, modelName = mod$modelName)
+```
+
+```{r, fig.show='hold', fig.height=7}
+plot(mod, what = "classification")
+```
+
+---
+
+## PS: Conclusions
+
+* Clustering results were sensitive to outliers.
+* Dimension 2 is more informative than clustering results.
+
+For follow up:   
+
+* Examine cluster differences with IQ, psychotic features and facial measurements.
+
+---
+
+## projPS: Cluster Visualization
+
+--
+
+```{r}
+# Project scores
+ps_gscores = penn_df %>% filter(group != 'NC') %>% select(-c(all_of(demographics), group))
+pc_df = weigh_scores2(ps_gscores, resPCA_22q)[,1:2] %>% data.frame()
+colnames(pc_df) = paste('Dim', 1:2, sep='.')
+
+mod = Mclust(pc_df)
+```
+
+A `r mclustModelNames(mod$modelName)$type` model with `r mod$G` components was highlighted as the best model. The clusters are separated by Dimension 1. 
+
+```{r, fig.show="hold", out.width="50%"}
+plot_loadings(resPCA_22q, 1)
+plot(mod, what = "classification")
+```
+
+```{r, eval=FALSE}
+## projPS: PC associations
+
+## Correlation w age
+r = cor(pc_df, data.frame(age = ps_df$age)) %>% t() %>% as.data.frame()
+p = sapply(pc_df, function(x) cor.test(x, y=ps_df$age)$p.val) %>% as.matrix() %>% t() %>% as.data.frame() 
+rownames(p) = 'p.val'
+rbind(r,p)
+
+## Sex
+data.frame(sex = ps_df$sex, pc_df) %>% pivot_longer(cols= colnames(pc_df), names_to = 'PC') %>% ggplot(aes(x=PC, y=value, color=sex)) + geom_boxplot() + ggtitle('PC values by sex')
+
+## Race
+data.frame(sex = ps_df$race, pc_df) %>% pivot_longer(cols= colnames(pc_df), names_to = 'PC') %>% ggplot(aes(x=PC, y=value, color=sex)) + geom_boxplot() + ggtitle('PC values by race')
+```
+
+---
+
+## projPS: Clustering adjusted for Age
+
+```{r, message=FALSE}
+reg_pc_df = data.frame(Dim.1 = residuals(lm(pc_df$Dim.1 ~ ps_df$age)),
+                       Dim.2 = residuals(lm(pc_df$Dim.2 ~ ps_df$age)))
+
+mod = mclust::Mclust(reg_pc_df)
+#summary(mod)
+```
+
+When the age effect is corrected for, the clustering solution collapses into a singular distribution suggesting spurious effects associated with age in the original results.
+
+```{r, message=FALSE}
+plot(mod, what = "classification")
+```
+
+---
+
+## projPS: PC differences
+
+```{r}
+t.1 = t.test(pc_df$Dim.1[ps_df$group == 'SZ'], pc_df$Dim.1[ps_df$group == 'CR'], var.equal = TRUE) 
+t.2 = t.test(pc_df$Dim.2[ps_df$group == 'SZ'], pc_df$Dim.2[ps_df$group == 'CR'], var.equal = TRUE) 
+```
+
+There were no significant differences between SZ and CR groups on PC1, `r apa(t.1)`, or PC2, `r apa(t.2)`.
+
+```{r}
+## PS: Factor Scores PS and CR
+tmp_df = data.frame(pc_df, group = ps_df$group)
+tmp_df %>% ggplot(aes(x=Dim.1, y=Dim.2, color = group)) + geom_point() + 
+  geom_point(data = tmp_df %>%  group_by(group) %>% summarize_all(mean), size = 4, shape = 17) + scale_color_manual(values = c("orange", "purple")) + theme_bw()
+```
+
+---
+
+## projPS: Conclusions
+
+* Clustering results were predicated primarily on age effects suggesting spurious results. 
+
+---
+
+## Follow up
+
+The analysis of PS projected scores reveals there can be strong age effects at play in the 22q feature space. Therefore, validating 22q11.2 deletion clusters with the remaining variables——psychotic features, IQ, and facial measurements——would be appropriate to aid interpretation. 
+
+In the case of PS clusters, examining psychotic symptoms and their interactions could be informative for validating any potential cluster structure.
+
+---
+
+## References
+
+McLachlan, G. J., Lee, S. X., & Rathnayake, S. I. (2019). Finite mixture models. Annual Review of Statistics and Its Application, 6, 355–378. https://doi.org/10.1146/annurev-statistics-031017-100325  
+
+Scrucca L., Fop M., Murphy T. B., Raftery A.E. (2016). “mclust 5: clustering, classification and density estimation using Gaussian finite mixture models.” The R Journal, 8(1), 289–317. https://doi.org/10.32614/RJ-2016-021. 
+

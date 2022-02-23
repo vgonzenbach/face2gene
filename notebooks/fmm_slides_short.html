@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="" xml:lang="">
+  <head>
+    <title>face2gene:</title>
+    <meta charset="utf-8" />
+    <meta name="author" content="Virgilio Gonzenbach, Kelly Clark, Russell T. Shinohara  vgonzenb@pennmedicine.upenn.edu" />
+    <meta name="date" content="2022-02-23" />
+    <script src="style/libs/header-attrs/header-attrs.js"></script>
+    <link rel="stylesheet" href="style/penn.css" type="text/css" />
+  </head>
+  <body>
+    <textarea id="source">
+class: center, middle, inverse, title-slide
+
+# face2gene:
+## Latent Profile Analysis within Diagnosis
+### Virgilio Gonzenbach, Kelly Clark, Russell T. Shinohara </br> <a href="mailto:vgonzenb@pennmedicine.upenn.edu" class="email">vgonzenb@pennmedicine.upenn.edu</a>
+### PennSIVE
+### 2022-02-23
+
+---
+
+
+
+
+
+
+## Latent Profile Analysis
+
+Latent Profile Analysis, also known as Gaussian Mixture Models, is a model-based clustering approach aimed at finding distinct "profiles", or clusters, based on continuous data. 
+
+The present analysis consists of the following three cases according to sample and pre-processing method selected:
+
+* 22q: PCA was performed on gestalt scores from 22q11.2 deletion sample.
+* PS: PCA was performed on gestalt scores from Psychosis Spectrum (PS) groups.
+* projPS: PS gestalt scores were projected onto 22q PCA results.
+
+Summary of procedure: 
+
+For each analysis section detailed above, an initial LPA was performed on the first `\(p\)` Principal Components (PC)—— `\(p=4,6,4\)` respectively——where `\(p\)` was determined by visual examination of the screeplot of eigenvalues (i.e. elbow rule). Clustering results were visually inspected and dimensions of separation were found to be among the first 2 PCs in all cases.  
+
+Results shown here are based on the clustering results on the first 2 PCs.
+
+---
+
+## 22q: Cluster Visualizations
+
+--
+
+
+
+Taking the first 2 PCs, a diagonal, varying volume and shape model with 3 components was highlighted as the best model per the BIC. The clusters are separated by Dimension 1. 
+
+&lt;img src="fmm_slides_short_files/figure-html/unnamed-chunk-3-1.png" width="50%" height="450" /&gt;&lt;img src="fmm_slides_short_files/figure-html/unnamed-chunk-3-2.png" width="50%" height="450" /&gt;
+
+---
+
+## 22q: External Validation
+
+
+
+Clustering results were not associated with sex, `\(\chi^2\)`(2) = 2.26, *p* = .323, or race, `\(\chi^2\)`(10) = 5.06, *p* = .887.
+
+Clusters did show differences in age, however:  
+
+
+```
+##        Effect                                                
+## 1 (Intercept) F(1, 165) = 1429.71, p &lt; .001, petasq = .90 ***
+## 2  clustering F(2, 165) =    4.71, p = .010, petasq = .05 *
+```
+
+And PCs were correlated with age also:
+
+
+```
+##              Dim.1         Dim.2
+## age   -0.213218096 -0.2793875100
+## p.val  0.005520636  0.0002448886
+```
+
+---
+
+## 22q: Clustering adjusted for Age
+
+When the age effect on the PCs is corrected for, clustering results differed in their number and shape of distribution  for in the PCs. Sex and race remain independent from these modified clustering results.
+
+&lt;img src="fmm_slides_short_files/figure-html/unnamed-chunk-7-1.png" width="675" height="450" /&gt;
+
+---
+
+## 22q: Conclusion
+
+* Clustering results showed age effects.
+* Dimension 1 best separated the clusters in the age-adjusted and non-adjusted results.
+
+For follow up:    
+
+* Examine cluster differences in IQ, psychotic features and facial measurements.
+
+---
+
+## PS: Cluster visualization
+
+--
+
+
+
+A ellipsoidal, equal volume and shape model with 2 components was highlighted as the best model by the LPA. The clusters are separated by Dimension 2. 
+
+&lt;img src="fmm_slides_short_files/figure-html/unnamed-chunk-9-1.png" width="50%" height="450" /&gt;&lt;img src="fmm_slides_short_files/figure-html/unnamed-chunk-9-2.png" width="50%" height="450" /&gt;
+
+---
+
+## PS: External Validation
+
+
+
+Clustering results were not associated with sex, `\(\chi^2\)`(1) = 0.64, *p* = .423 or race `\(\chi^2\)`(1) = 0.64, *p* = .423.
+
+Clusters did not show differences in age :  
+
+
+```
+##        Effect                                              
+## 1 (Intercept) F(1, 58) = 598.94, p &lt; .001, petasq = .91 ***
+## 2  clustering F(1, 58) =   0.09, p = .760, petasq &lt; .01
+```
+
+Psychosis Spectrum sub-groups Schizophrenia (SZ) and Clinical Risk (CR) were not correlated with clustering results `\(\chi^2\)`(1) = 0.73, *p* = .394
+
+---
+
+## PS: PC differences
+
+
+
+There were significant differences between the SZ and CR groups on PC 2, *t*(58) = 2.28, *p* = .026, *d* = 0.59, but not on PC 1, *t*(58) = 1.16, *p* = .251, *d* = 0.30.
+
+&lt;img src="fmm_slides_short_files/figure-html/unnamed-chunk-13-1.png" width="675" height="450" /&gt;
+
+---
+
+## PS: Clustering adjusted for Age 
+
+
+
+Principal component 1 was associated with age `\(r\)` = 0.36, *p* = 0.01. However, adjusting PC scores for age did not alter the clustering results.
+
+
+
+&lt;img src="fmm_slides_short_files/figure-html/unnamed-chunk-16-1.png" width="675" height="450" /&gt;
+
+---
+
+## PS: Conclusions
+
+* Clustering results were sensitive to outliers.
+* Dimension 2 is more informative than clustering results.
+
+For follow up:   
+
+* Examine cluster differences with IQ, psychotic features and facial measurements.
+
+---
+
+## projPS: Cluster Visualization
+
+--
+
+
+
+A spherical, varying volume model with 3 components was highlighted as the best model. The clusters are separated by Dimension 1. 
+
+&lt;img src="fmm_slides_short_files/figure-html/unnamed-chunk-18-1.png" width="50%" height="450" /&gt;&lt;img src="fmm_slides_short_files/figure-html/unnamed-chunk-18-2.png" width="50%" height="450" /&gt;
+
+
+
+---
+
+## projPS: Clustering adjusted for Age
+
+
+
+When the age effect is corrected for, the clustering solution collapses into a singular distribution suggesting spurious effects associated with age in the original results.
+
+&lt;img src="fmm_slides_short_files/figure-html/unnamed-chunk-21-1.png" width="675" height="450" /&gt;
+
+---
+
+## projPS: PC differences
+
+
+
+There were no significant differences between SZ and CR groups on PC1, *t*(58) = 1.07, *p* = .291, *d* = 0.28, or PC2, *t*(58) = 0.85, *p* = .397, *d* = 0.22.
+
+&lt;img src="fmm_slides_short_files/figure-html/unnamed-chunk-23-1.png" width="675" height="450" /&gt;
+
+---
+
+## projPS: Conclusions
+
+* Clustering results were predicated primarily on age effects suggesting spurious results. 
+
+---
+
+## Follow up
+
+The analysis of PS projected scores reveals there can be strong age effects at play in the 22q feature space. Therefore, validating 22q11.2 deletion clusters with the remaining variables——psychotic features, IQ, and facial measurements——would be appropriate to aid interpretation. 
+
+In the case of PS clusters, examining psychotic symptoms and their interactions could be informative for validating any potential cluster structure.
+
+---
+
+## References
+
+McLachlan, G. J., Lee, S. X., &amp; Rathnayake, S. I. (2019). Finite mixture models. Annual Review of Statistics and Its Application, 6, 355–378. https://doi.org/10.1146/annurev-statistics-031017-100325  
+
+Scrucca L., Fop M., Murphy T. B., Raftery A.E. (2016). “mclust 5: clustering, classification and density estimation using Gaussian finite mixture models.” The R Journal, 8(1), 289–317. https://doi.org/10.32614/RJ-2016-021. 
+
+    </textarea>
+<style data-target="print-only">@media screen {.remark-slide-container{display:block;}.remark-slide-scaler{box-shadow:none;}}</style>
+<script src="style/libs/remark-latest.min.js"></script>
+<script>var slideshow = remark.create({
+"highlightStyle": "github",
+"highlightLines": true,
+"countIncrementalSlides": false
+});
+if (window.HTMLWidgets) slideshow.on('afterShowSlide', function (slide) {
+  window.dispatchEvent(new Event('resize'));
+});
+(function(d) {
+  var s = d.createElement("style"), r = d.querySelector(".remark-slide-scaler");
+  if (!r) return;
+  s.type = "text/css"; s.innerHTML = "@page {size: " + r.style.width + " " + r.style.height +"; }";
+  d.head.appendChild(s);
+})(document);
+
+(function(d) {
+  var el = d.getElementsByClassName("remark-slides-area");
+  if (!el) return;
+  var slide, slides = slideshow.getSlides(), els = el[0].children;
+  for (var i = 1; i < slides.length; i++) {
+    slide = slides[i];
+    if (slide.properties.continued === "true" || slide.properties.count === "false") {
+      els[i - 1].className += ' has-continuation';
+    }
+  }
+  var s = d.createElement("style");
+  s.type = "text/css"; s.innerHTML = "@media print { .has-continuation { display: none; } }";
+  d.head.appendChild(s);
+})(document);
+// delete the temporary CSS (for displaying all slides initially) when the user
+// starts to view slides
+(function() {
+  var deleted = false;
+  slideshow.on('beforeShowSlide', function(slide) {
+    if (deleted) return;
+    var sheets = document.styleSheets, node;
+    for (var i = 0; i < sheets.length; i++) {
+      node = sheets[i].ownerNode;
+      if (node.dataset["target"] !== "print-only") continue;
+      node.parentNode.removeChild(node);
+    }
+    deleted = true;
+  });
+})();
+(function() {
+  "use strict"
+  // Replace <script> tags in slides area to make them executable
+  var scripts = document.querySelectorAll(
+    '.remark-slides-area .remark-slide-container script'
+  );
+  if (!scripts.length) return;
+  for (var i = 0; i < scripts.length; i++) {
+    var s = document.createElement('script');
+    var code = document.createTextNode(scripts[i].textContent);
+    s.appendChild(code);
+    var scriptAttrs = scripts[i].attributes;
+    for (var j = 0; j < scriptAttrs.length; j++) {
+      s.setAttribute(scriptAttrs[j].name, scriptAttrs[j].value);
+    }
+    scripts[i].parentElement.replaceChild(s, scripts[i]);
+  }
+})();
+(function() {
+  var links = document.getElementsByTagName('a');
+  for (var i = 0; i < links.length; i++) {
+    if (/^(https?:)?\/\//.test(links[i].getAttribute('href'))) {
+      links[i].target = '_blank';
+    }
+  }
+})();
+// adds .remark-code-has-line-highlighted class to <pre> parent elements
+// of code chunks containing highlighted lines with class .remark-code-line-highlighted
+(function(d) {
+  const hlines = d.querySelectorAll('.remark-code-line-highlighted');
+  const preParents = [];
+  const findPreParent = function(line, p = 0) {
+    if (p > 1) return null; // traverse up no further than grandparent
+    const el = line.parentElement;
+    return el.tagName === "PRE" ? el : findPreParent(el, ++p);
+  };
+
+  for (let line of hlines) {
+    let pre = findPreParent(line);
+    if (pre && !preParents.includes(pre)) preParents.push(pre);
+  }
+  preParents.forEach(p => p.classList.add("remark-code-has-line-highlighted"));
+})(document);</script>
+
+<script>
+slideshow._releaseMath = function(el) {
+  var i, text, code, codes = el.getElementsByTagName('code');
+  for (i = 0; i < codes.length;) {
+    code = codes[i];
+    if (code.parentNode.tagName !== 'PRE' && code.childElementCount === 0) {
+      text = code.textContent;
+      if (/^\\\((.|\s)+\\\)$/.test(text) || /^\\\[(.|\s)+\\\]$/.test(text) ||
+          /^\$\$(.|\s)+\$\$$/.test(text) ||
+          /^\\begin\{([^}]+)\}(.|\s)+\\end\{[^}]+\}$/.test(text)) {
+        code.outerHTML = code.innerHTML;  // remove <code></code>
+        continue;
+      }
+    }
+    i++;
+  }
+};
+slideshow._releaseMath(document);
+</script>
+<!-- dynamically load mathjax for compatibility with self-contained -->
+<script>
+(function () {
+  var script = document.createElement('script');
+  script.type = 'text/javascript';
+  script.src  = 'style/MathJax-master/MathJax.js?config=TeX-MML-AM_HTMLorMML';
+  if (location.protocol !== 'file:' && /^https?:/.test(script.src))
+    script.src  = script.src.replace(/^https?:/, '');
+  document.getElementsByTagName('head')[0].appendChild(script);
+})();
+</script>
+  </body>
+</html>

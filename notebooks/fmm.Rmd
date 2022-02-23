@@ -1,0 +1,134 @@
+---
+title: "fmm.Rmd"
+author: "Virgilio Gonzenbach"
+date: "1/28/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(dplyr)
+library(mclust)
+library(FactoMineR)
+library(factoextra)
+library(kableExtra)
+
+chop_df = read.csv('data/Chop_merged_wideV_tp1.csv')
+penn_df = read.csv("data/Penn_merged_wideV.csv")[,-1] %>% filter(group != "?") # 3 observations in '?' group
+
+# Exclude columns with only zeros
+get_zero_cols = function(df){
+  num_zeros = df %>% sapply(function(x) x == 0) %>% colSums()
+  prop_zeros = num_zeros / nrow(df)
+  zero_cols = names(which(num_zeros == nrow(df)))
+  return(zero_cols)
+}
+
+get_zero_cols = function(df){
+  num_zeros = df %>% sapply(function(x) x == 0) %>% colSums()
+  prop_zeros = num_zeros / nrow(chop_df)
+  zero_cols = names(which(prop_zeros == 1))
+  return(zero_cols)
+}
+
+chop_df = chop_df %>% select(-all_of(get_zero_cols(chop_df)))
+penn_df = penn_df %>% select(-all_of(get_zero_cols(penn_df)))
+
+# Set seed for reproducibility
+seed=42
+set.seed(seed)
+```
+
+## Sample sizes
+
+```{r}
+t(table(c(chop_df$group, penn_df$group))) %>% kable(format="html") %>% kable_styling("striped", full_width = TRUE)
+```
+
+
+## Latent Profile Analysis
+
+Latent Profile Analysis, or Gaussian Mixture Models, is a model-based clustering approach aimed at finding distinct "profile"/clusters based on continuous data. In LPA, the distribution of observed scores is assumed to come from a number of distinct (Gaussian/normal) distributions. LPA estimates parameters (i.e. mean, variance, covariances) for the specified number of distributions $g$.  
+
+## 1. a. LPA on first PCs from 22q sample
+
+```{r}
+chop_gscores = chop_df[, -c(1:7)]
+resPCA_22q = PCA(chop_gscores, scale.unit = FALSE, graph = FALSE, ncp=length(chop_gscores))
+fviz_screeplot(resPCA_22q)
+```
+
+```{r}
+pc_df = data.frame(resPCA_22q$ind$coord[,1:4])
+mod = mclust::Mclust(pc_df)
+summary(mod)
+plot(mod, what = "BIC")
+```
+
+```{r}
+plot(mod, what = "classification")
+```
+
+```{r}
+plot(mod, what = "uncertainty")
+```
+
+```{r}
+ICL = mclustICL(pc_df)
+plot(ICL)
+```
+
+```{r}
+LRT = mclustBootstrapLRT(pc_df, modelName = "VII")
+LRT
+```
+
+Initialization?
+
+### External Validation
+
+
+
+
+## 2. a. PS group
+
+Pre-processing: PCA applied directly on the PS gestalt scores (**not** projected onto 22q feature space).
+
+Taking first 6 dimensions.
+
+```{r}
+demographics = c("bbl_id", "case_id", "sex", "race", "age", "age_at_photo")
+ps_gscores = penn_df %>% filter(group != 'NC') %>% select(-c(all_of(demographics), group))
+
+resPCA = PCA(ps_gscores, scale.unit = FALSE, graph = FALSE, ncp=length(chop_gscores))
+fviz_screeplot(resPCA)
+```
+
+```{r}
+pc_df = data.frame(resPCA$ind$coord[,1:6])
+mod = Mclust(pc_df)
+```
+
+```{r}
+summary(mod)
+plot(mod, what = "BIC")
+```
+```{r}
+plot(mod, what = "classification")
+```
+
+```{r}
+plot(mod, what = "uncertainty")
+```
+
+```{r}
+ICL = mclustICL(pc_df)
+plot(ICL)
+```
+```{r}
+LRT = mclustBootstrapLRT(pc_df, modelName = "VEI")
+LRT
+```
