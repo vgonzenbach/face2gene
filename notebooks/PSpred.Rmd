@@ -156,11 +156,12 @@ weigh_scores2 = function(df, resPCA){
 No significant differences between groups.
 
 ```{r}
-PC1 = weigh_scores(df, get_loadings(resPCA, 1))
+scores_df = data.frame(group = df$group)
+scores_df$PC1 = weigh_scores(df, get_loadings(resPCA, 1))
 NC = df$group == "NC"
 PS = df$group == "PS"
 
-res.t.test = t.test(PC1[NC], PC1[PS])
+res.t.test = t.test(scores_df$PC1[NC], scores_df$PC1[PS])
 names(res.t.test$estimate) = c("mean of NC", "mean of PS")
 res.t.test
 ```
@@ -170,9 +171,9 @@ res.t.test
 PC2 shows a difference between NC and PS groups.
 
 ```{r}
-PC2 = weigh_scores(df, get_loadings(resPCA, 2))
+scores_df$PC2 = weigh_scores(df, get_loadings(resPCA, 2))
 
-res.t.test = t.test(PC2[NC], PC2[PS])
+res.t.test = t.test(scores_df$PC2[NC], scores_df$PC2[PS])
 names(res.t.test$estimate) = c("mean of NC", "mean of PS")
 res.t.test
 ```
@@ -183,10 +184,10 @@ res.t.test
 We see a difference in variances on PC2.
 
 ```{r}
-tmp_df = data.frame(group = as.factor(penn_df$group),
-          PC1, PC2) %>% filter(group!= "NC") 
-tmp_df %>% ggplot(aes(x=PC1, y=PC2, color = group)) + geom_point() + 
-  geom_point(data = tmp_df %>%  group_by(group) %>% summarize_all(mean), size = 4, shape = 17) + scale_color_manual(values = c("orange", "purple"))
+ps_df = data.frame(group = as.factor(penn_df$group),
+          PC1 = scores_df$PC1, PC2 = scores_df$PC2) %>% filter(group!= "NC") 
+ps_df %>% ggplot(aes(x=PC1, y=PC2, color = group)) + geom_point() + 
+  geom_point(data = ps_df %>%  group_by(group) %>% summarize_all(mean), size = 4, shape = 17) + scale_color_manual(values = c("orange", "purple"))
 ```
 
 #### PC2: T-test
@@ -195,7 +196,7 @@ tmp_df %>% ggplot(aes(x=PC1, y=PC2, color = group)) + geom_point() +
 SZ = penn_df$group=="SZ"
 CR = penn_df$group=="CR"
 
-res.t.test = t.test(PC2[SZ], PC2[CR])
+res.t.test = t.test(scores_df$PC2[SZ], scores_df$PC2[CR])
 names(res.t.test$estimate) = c("mean of SZ", "mean of CR")
 res.t.test
 ```
@@ -203,12 +204,10 @@ res.t.test
 #### PC2: Levene's test
 
 ```{r}
-car::leveneTest(tmp_df$PC2, tmp_df$group)
+car::leveneTest(ps_df$PC2, ps_df$group)
 ```
 
 ## 3. Predicting PS status based on 22q-like PC2
-
-ROC curves for PC 2.
 
 ```{r}
 plotROCs = function(roc1, roc2, main, legends){
@@ -228,43 +227,39 @@ plotROCs = function(roc1, roc2, main, legends){
 }
 ```
 
-### PC2
-
 ```{r, message=FALSE}
-resROCPC2 = roc(df$group ~ PC2, data=NULL)
+resROCPC2 = roc(group ~ PC2, data=scores_df)
 plot(resROCPC2, main = sprintf("PC2 predictive of PS status (AUC = %s)", round(auc(resROCPC2),3)))
+ci(resROCPC2)
+```
+### SZ and CR
+
+Focusing the prediction on PS subgroups, results are similar to predicting on the aggregated PS group.
+
+#### Schizophrenia (SZ)
+
+```{r}
+sz_df = data.frame(group = penn_df$group, PC2 = scores_df$PC2) %>% filter(group != 'CR')
+resROCPC2 = roc(group ~ PC2, data=sz_df)
+plot(resROCPC2, main = sprintf("PC2 predictive of SZ status (AUC = %s)", round(auc(resROCPC2),3)))
+ci(resROCPC2)
+```
+#### Clinical Risk (CR)
+
+```{r}
+cr_df = data.frame(group = penn_df$group, PC2 = scores_df$PC2) %>% filter(group != 'SZ')
+resROCPC2 = roc(group ~ PC2, data=cr_df)
+plot(resROCPC2, main = sprintf("PC2 predictive of CR status (AUC = %s)", round(auc(resROCPC2),3)))
 ci(resROCPC2)
 ```
 
 ## 4. Association of PC2 with demographics and phenotypic information
 
-```{r}
-cov_df = data.frame(PC2, penn_df[, c("group", "sex", "age", "race")])
-```
-
-### Sex
+PC2 is associated with age and sex.
 
 ```{r}
-anova(lm(PC2 ~ sex, data=cov_df))
-```
-
-### Race
-
-```{r}
-anova(lm(PC2 ~ race, data=cov_df))
-```
-
-### Age
-
-```{r}
-cor.test(cov_df$PC2, cov_df$age)
-anova(lm(PC2 ~ age, data=cov_df))
-```
-
-## Age, Sex, Race
-
-```{r}
-anova(lm(PC2 ~ sex + race + age, data=cov_df))
+cov_df = data.frame(PC2 = scores_df$PC2, penn_df[, c("group", "sex", "age", "race")])
+anova(lm(PC2 ~ sex + age + race + group, data=cov_df))
 ```
 
 ## Conclusion
