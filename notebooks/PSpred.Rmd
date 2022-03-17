@@ -19,8 +19,6 @@ library(dplyr)
 library(tidyr)
 library(FactoMineR)
 library(factoextra)
-library(e1071)
-library(caret)
 library(pander)
 library(pROC)
 library(kableExtra)
@@ -318,6 +316,41 @@ fitted.values = glm(group~., scores_df, family = binomial)$fitted.values
 resROC.log = roc(scores_df$group, fitted.values)
 plotROCs(resROCPC2, resROC.log, main="ROC curves of PC2 and logistic regression model", legends=c("PC2", "Log. Reg."))
 ```
+
+## 4. Association of PC2 with demographics and phenotypic information
+
+```{r}
+cov_df = data.frame(PC2, penn_df[, c("group", "sex", "age", "race")])
+```
+
+### Sex
+
+```{r}
+anova(lm(PC2 ~ sex, data=cov_df))
+```
+
+### Race
+
+```{r}
+anova(lm(PC2 ~ race, data=cov_df))
+```
+
+### Age
+
+```{r}
+cor.test(cov_df$PC2, cov_df$age)
+anova(lm(PC2 ~ age, data=cov_df))
+```
+
+## Age, Sex, Race
+
+```{r}
+anova(lm(PC2 ~ sex + race + age, data=cov_df))
+```
+
+
+
+
 
 ## Conclusion
 
