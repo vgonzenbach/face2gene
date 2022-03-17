@@ -7,11 +7,14 @@ output: html_document
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
 ```
 
 ```{r, message=FALSE}
+library(tidyr)
 library(dplyr)
 library(mclust)
+library(InPosition)
 library(FactoMineR)
 library(factoextra)
 library(kableExtra)
@@ -58,27 +61,54 @@ Latent Profile Analysis, or Gaussian Mixture Models, is a model-based clustering
 ```{r}
 chop_gscores = chop_df[, -c(1:7)]
 resPCA_22q = PCA(chop_gscores, scale.unit = FALSE, graph = FALSE, ncp=length(chop_gscores))
+# resPCA_22q = epPCA.inference.battery(chop_gscores, scale = FALSE, graphs=FALSE)
 fviz_screeplot(resPCA_22q)
+```
+
+```{r}
+get_loadings = function(resPCA, dim=1){
+  # Extract metrics from PCA object
+  r = resPCA$var$coord[, dim] / sqrt(resPCA$eig[dim])
+  # is equal to 
+  return(r)
+}
+
+plot_loadings = function(resPCA, dim=1){
+  # Plot loadings
+  r = get_loadings(resPCA, dim)
+  filter = r^2 > mean(r^2, na.rm = TRUE)
+  
+  # Prep data
+  df = data.frame(var=names(r), cor = r, row.names = NULL)[filter, ] %>% drop_na()
+  df = df[order(df$cor, decreasing = TRUE),]
+  df$var = factor(df$var, levels = rev(df$var)) #order before plotting
+  
+  # Plot
+  title = sprintf("PC%s loadings", dim)
+  p = df %>% ggplot(aes(x=var, y=cor)) + geom_col() + coord_flip() + 
+    xlab("Gestalt Score") + ylab("Loading") + ggtitle(title) + 
+    theme_bw() + theme(axis.text.y = element_text(size=10))
+  return(p)
+}
+
+plot_loadings(resPCA_22q, 1)
 ```
 
 ```{r}
 pc_df = data.frame(resPCA_22q$ind$coord[,1:4])
 mod = mclust::Mclust(pc_df)
 summary(mod)
+```
+
+## Delete?
+
+```{r}
 plot(mod, what = "BIC")
 ```
 
+
 ```{r}
 plot(mod, what = "classification")
-```
-
-```{r}
-plot(mod, what = "uncertainty")
-```
-
-```{r}
-ICL = mclustICL(pc_df)
-plot(ICL)
 ```
 
 ```{r}
@@ -86,11 +116,25 @@ LRT = mclustBootstrapLRT(pc_df, modelName = "VII")
 LRT
 ```
 
-Initialization?
-
 ### External Validation
 
+Sex: 
 
+```{r}
+chisq.test(mod$classification, chop_df$sex)
+```
+
+Age:
+
+```{r}
+t.test(chop_df$age[mod$classification == 1], chop_df$age[mod$classification == 2])
+```
+
+Race:
+
+```{r}
+chisq.test(mod$classification, chop_df$race)
+```
 
 
 ## 2. a. PS group
@@ -101,7 +145,8 @@ Taking first 6 dimensions.
 
 ```{r}
 demographics = c("bbl_id", "case_id", "sex", "race", "age", "age_at_photo")
-ps_gscores = penn_df %>% filter(group != 'NC') %>% select(-c(all_of(demographics), group))
+ps_df = penn_df %>% filter(group != 'NC')
+ps_gscores =  ps_df %>% select(-c(all_of(demographics), group))
 
 resPCA = PCA(ps_gscores, scale.unit = FALSE, graph = FALSE, ncp=length(chop_gscores))
 fviz_screeplot(resPCA)
@@ -119,16 +164,78 @@ plot(mod, what = "BIC")
 ```{r}
 plot(mod, what = "classification")
 ```
-
 ```{r}
-plot(mod, what = "uncertainty")
+plot_loadings(resPCA, 2)
 ```
 
 ```{r}
-ICL = mclustICL(pc_df)
-plot(ICL)
-```
-```{r}
-LRT = mclustBootstrapLRT(pc_df, modelName = "VEI")
+LRT = mclustBootstrapLRT(pc_df, modelName = mod$modelName)
 LRT
 ```
+
+
+### External Validation
+
+Concordance with
+
+```{r}
+chisq.test(mod$classification, penn_df$group[penn_df$group != 'NC'])
+```
+
+```{r}
+adjustedRandIndex(mod$classification, ps_df$group)
+```
+
+Sex:
+```{r}
+chisq.test(mod$classification,  ps_df$sex)
+```
+
+Race: 
+
+```{r}
+chisq.test(mod$classification,  ps_df$race)
+```
+
+Age: 
+
+```{r}
+t.test(pc_df$Dim.2[ps_df$group == 'SZ'], pc_df$Dim.2[ps_df$group == 'CR'])
+```
+
+
+## 3. a PS group projected scores
+
+```{r}
+weigh_scores2 = function(df, resPCA){
+  # which gestalt scores are missing from penn_df? i.e. PS and NC groups
+  nohits = rownames(resPCA$var$coord)[which(!(rownames(resPCA$var$coord) %in% colnames(df)))] 
+  df[, nohits] = 0 # set missing to zero to define columns
+   
+  scores.mat = as.matrix(df[, rownames(resPCA$var$coord)]) 
+  weighted_score = scores.mat %*% resPCA$svd$V
+  
+  return(weighted_score)
+}
+
+# Project scores
+ps_gscores = penn_df %>% filter(group != 'NC') %>% select(-c(all_of(demographics), group))
+pc_df = weigh_scores2(ps_gscores, resPCA_22q)[,1:4] %>% data.frame()
+colnames(pc_df) = paste('Dim', 1:4, sep='.')
+```
+
+```{r}
+mod = mclust::Mclust(pc_df)
+summary(mod)
+```
+
+```{r}
+plot(mod$BIC)
+```
+
+```{r}
+
+```
+
+
+
