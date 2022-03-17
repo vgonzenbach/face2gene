@@ -114,6 +114,13 @@ plot_loadings(resPCA, dim=1)
 plot_loadings(resPCA, dim=2)
 ```
 
+### Scores
+
+```{r}
+x22q_df = data.frame(PC1 = resPCA$ind$coord[, 1], PC2 = resPCA$ind$coord[, 2])
+x22q_df %>% ggplot(aes(x=PC1, y=PC2)) + geom_point() 
+```
+
 ## 2. Testing for differences in 22q-like factor scores between PS and NC
 
 For the Penn sample (i.e. PS and NC groups), 2 factor scores are computed using the loadings above as weights in a linear combination of relevant gestalt scores (i.e. those gave hits in the 22q sample).
@@ -178,6 +185,11 @@ names(res.t.test$estimate) = c("mean of NC", "mean of PS")
 res.t.test
 ```
 
+```{r}
+scores_df %>% ggplot(aes(x=PC1, y=PC2, color = group)) + geom_point() + 
+  geom_point(data = scores_df %>% group_by(group) %>% summarize_all(mean), size = 4, shape = 17) + scale_color_manual(values = c("dodgerblue", "salmon")) + ggtitle("22q-like PC Scores of Penn sample")
+```
+
 
 ### SZ vs CR
 
@@ -232,21 +244,26 @@ resROCPC2 = roc(group ~ PC2, data=scores_df)
 plot(resROCPC2, main = sprintf("PC2 predictive of PS status (AUC = %s)", round(auc(resROCPC2),3)))
 ci(resROCPC2)
 ```
+
+
+
+
 ### SZ and CR
 
 Focusing the prediction on PS subgroups, results are similar to predicting on the aggregated PS group.
 
 #### Schizophrenia (SZ)
 
-```{r}
+```{r, message=FALSE}
 sz_df = data.frame(group = penn_df$group, PC2 = scores_df$PC2) %>% filter(group != 'CR')
 resROCPC2 = roc(group ~ PC2, data=sz_df)
 plot(resROCPC2, main = sprintf("PC2 predictive of SZ status (AUC = %s)", round(auc(resROCPC2),3)))
 ci(resROCPC2)
 ```
+
 #### Clinical Risk (CR)
 
-```{r}
+```{r, message=FALSE}
 cr_df = data.frame(group = penn_df$group, PC2 = scores_df$PC2) %>% filter(group != 'SZ')
 resROCPC2 = roc(group ~ PC2, data=cr_df)
 plot(resROCPC2, main = sprintf("PC2 predictive of CR status (AUC = %s)", round(auc(resROCPC2),3)))
@@ -258,9 +275,23 @@ ci(resROCPC2)
 PC2 is associated with age and sex.
 
 ```{r}
-cov_df = data.frame(PC2 = scores_df$PC2, penn_df[, c("group", "sex", "age", "race")])
+cov_df = data.frame(PC1 = scores_df$PC1, PC2 = scores_df$PC2, penn_df[, c("group", "sex", "age", "race")])
 anova(lm(PC2 ~ sex + age + race + group, data=cov_df))
 ```
+
+#### Sex
+
+```{r}
+cov_df %>% ggplot(aes(x=PC1, y=PC2, color = sex)) + geom_point() + 
+  geom_point(data = cov_df %>% select(PC1, PC2, sex) %>% group_by(sex) %>%  summarize_all(mean), size = 4, shape = 17) + scale_color_manual(values = c("red", "blue")) + ggtitle("22q-like PC scores for Penn sample coded by sex")
+```
+
+#### Age
+
+```{r, message=FALSE}
+cov_df %>% ggplot(aes(x=age, y=PC2)) + geom_point() + geom_smooth(method='lm')
+```
+
 
 ## Conclusion
 
