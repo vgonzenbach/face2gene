@@ -45,11 +45,9 @@ set.seed(seed)
 
 In this analysis, psychosis spectrum (PS) status is predicted based on 22q11.2 deletion syndrome (22q) characteristics.  
 
-- First, PCA is performed on the 22q sample to estimate the relative contributions, i.e. the loadings, of each gestalt score to the axes of greatest variability (PCs) in this group.  
+- First, PCA is performed on the 22q sample to estimate the relative contributions, i.e. the loadings, of each gestalt score to the axes of greatest variability (PCs) in this group.
 
-- These loadings are then used to compute "22q-like" factor scores for the NC and PS groups: two-sample t-tests show the two groups differ on PC 2 and 3.   
-
-- ROC analysis shows **PC2 alone correctly predicts PS status 67.8% of the time**, while incorporating PC3 in the prediction does not offer significant improvements.  
+- These loadings are then used to compute "22q-like" factor scores for the NC and PS groups: ROC analysis shows **PC2 alone correctly predicts PS status 67.8% of the time**.  
 
 - Additionally, Levene’s test shows that **variance from the schizophrenia (SZ) group differs from that of clinical risk (CR) on PC2**.
 
@@ -74,7 +72,7 @@ Using the "elbow rule", subsequent analysis will focus on the first 4 PCs.
 
 ### Loadings
 
-Loadings for the first 4 PCs are plotted below.
+Loadings for the first 2 PCs are plotted below.
 
 ```{r}
 get_loadings = function(resPCA, dim=1){
@@ -116,21 +114,9 @@ plot_loadings(resPCA, dim=1)
 plot_loadings(resPCA, dim=2)
 ```
 
-#### PC3
-
-```{r, fig.width=12, fig.height=8}
-plot_loadings(resPCA, dim=3)
-```
-
-#### PC4
-
-```{r, fig.width=12, fig.height=8}
-plot_loadings(resPCA, dim=4)
-```
-
 ## 2. Testing for differences in 22q-like factor scores between PS and NC
 
-For the Penn sample (i.e. PS and NC groups), 4 factor scores are computed using the loadings above as weights in a linear combination of relevant gestalt scores (i.e. those gave hits in the 22q sample).
+For the Penn sample (i.e. PS and NC groups), 2 factor scores are computed using the loadings above as weights in a linear combination of relevant gestalt scores (i.e. those gave hits in the 22q sample).
 
 Note: any reference to PCs/factor scores below refers to those computed for the Penn sample. 
 
@@ -191,48 +177,15 @@ names(res.t.test$estimate) = c("mean of NC", "mean of PS")
 res.t.test
 ```
 
-### PC 3
-
-PC3 shows a difference between NC and PS groups.
-
-```{r}
-PC3 = weigh_scores(df, get_loadings(resPCA, 3))
-
-res.t.test = t.test(PC3[NC], PC3[PS])
-names(res.t.test$estimate) = c("mean of NC", "mean of PS")
-res.t.test
-```
-
-### PC 4
-
-No significant difference between groups. 
-```{r}
-PC4 = weigh_scores(df, get_loadings(resPCA, 4))
-
-res.t.test = t.test(PC4[NC], PC4[PS])
-names(res.t.test$estimate) = c("mean of NC", "mean of PS")
-res.t.test
-```
-
-### Plot PC2 and PC3
-
-PCs 2 and 3 show significant differences between PS and NC.
-
-```{r}
-scores_df = data.frame(group = factor(df$group, levels = rev(unique(df$group))),
-          PC2, PC3) 
-scores_df %>% ggplot(aes(x=PC2, y=PC3, color = group)) + geom_point() + 
-  geom_point(data = scores_df %>% group_by(group) %>% summarize_all(mean), size = 4, shape = 17)
-```
 
 ### SZ vs CR
 
-By examining the same PCs in only SZ and CR groups, we see a difference in variances on PC2.
+We see a difference in variances on PC2.
 
 ```{r}
 tmp_df = data.frame(group = as.factor(penn_df$group),
-          PC2, PC3) %>% filter(group!= "NC") 
-tmp_df %>% ggplot(aes(x=PC2, y=PC3, color = group)) + geom_point() + 
+          PC1, PC2) %>% filter(group!= "NC") 
+tmp_df %>% ggplot(aes(x=PC1, y=PC2, color = group)) + geom_point() + 
   geom_point(data = tmp_df %>%  group_by(group) %>% summarize_all(mean), size = 4, shape = 17) + scale_color_manual(values = c("orange", "purple"))
 ```
 
@@ -253,25 +206,9 @@ res.t.test
 car::leveneTest(tmp_df$PC2, tmp_df$group)
 ```
 
-#### PC3: T-test
+## 3. Predicting PS status based on 22q-like PC2
 
-No differences related to PC3.
-
-```{r}
-res.t.test = t.test(PC3[SZ], PC3[CR])
-names(res.t.test$estimate) = c("mean of SZ", "mean of CR")
-res.t.test
-```
-
-#### PC3: Levene's test
-
-```{r}
-car::leveneTest(tmp_df$PC3, tmp_df$group)
-```
-
-## 3. Predicting PS status based on 22q-like components 2 and 3
-
-ROC curves are plotted for PCs 2 and 3. 
+ROC curves for PC 2.
 
 ```{r}
 plotROCs = function(roc1, roc2, main, legends){
@@ -294,27 +231,9 @@ plotROCs = function(roc1, roc2, main, legends){
 ### PC2
 
 ```{r, message=FALSE}
-resROCPC2 = roc(group ~ PC2, scores_df)
+resROCPC2 = roc(df$group ~ PC2, data=NULL)
 plot(resROCPC2, main = sprintf("PC2 predictive of PS status (AUC = %s)", round(auc(resROCPC2),3)))
 ci(resROCPC2)
-```
-
-### PC3
-
-```{r, message=FALSE}
-resROCPC3 = roc(group ~ PC3, scores_df)
-plot(resROCPC3, main = sprintf("PC3 predictive of PS status (AUC = %s)", round(auc(resROCPC3),3)))
-ci(resROCPC3)
-```
-
-### PC2 compared to logistic regression with PC2 and PC3
-
-A logistic regression model incorporating PCs 2 and 3 does not improve prediction compared to PC2 alone.
-
-```{r, message=FALSE, warning=FALSE}
-fitted.values = glm(group~., scores_df, family = binomial)$fitted.values
-resROC.log = roc(scores_df$group, fitted.values)
-plotROCs(resROCPC2, resROC.log, main="ROC curves of PC2 and logistic regression model", legends=c("PC2", "Log. Reg."))
 ```
 
 ## 4. Association of PC2 with demographics and phenotypic information
@@ -347,10 +266,6 @@ anova(lm(PC2 ~ age, data=cov_df))
 ```{r}
 anova(lm(PC2 ~ sex + race + age, data=cov_df))
 ```
-
-
-
-
 
 ## Conclusion
 
