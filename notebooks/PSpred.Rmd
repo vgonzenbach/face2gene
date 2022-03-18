@@ -292,6 +292,34 @@ cov_df %>% ggplot(aes(x=PC1, y=PC2, color = sex)) + geom_point() +
 cov_df %>% ggplot(aes(x=age, y=PC2)) + geom_point() + geom_smooth(method='lm')
 ```
 
+## 5. Predicting PS status based on sex- and age-adjusted PC2 
+
+Prediction strength for PS status drops slightly after adjustment. However, prediction of CR status becomes essentially random post-adjustment.
+
+```{r, message=FALSE}
+scores_df$PC2 = residuals(lm(PC2 ~ sex + age, data=cov_df))
+resROCPC2 = roc(group ~ PC2, data=scores_df)
+plot(resROCPC2, main = sprintf("PC2 predictive of PS status (AUC = %s)", round(auc(resROCPC2),3)))
+ci(resROCPC2)
+```
+
+#### Schizophrenia (SZ)
+
+```{r, message=FALSE}
+sz_df = data.frame(group = penn_df$group, PC2 = scores_df$PC2) %>% filter(group != 'CR')
+resROCPC2 = roc(group ~ PC2, data=sz_df)
+plot(resROCPC2, main = sprintf("PC2 predictive of SZ status (AUC = %s)", round(auc(resROCPC2),3)))
+ci(resROCPC2)
+```
+
+#### Clinical Risk (CR)
+
+```{r, message=FALSE}
+cr_df = data.frame(group = penn_df$group, PC2 = scores_df$PC2) %>% filter(group != 'SZ')
+resROCPC2 = roc(group ~ PC2, data=cr_df)
+plot(resROCPC2, main = sprintf("PC2 predictive of CR status (AUC = %s)", round(auc(resROCPC2),3)))
+ci(resROCPC2)
+```
 
 ## Conclusion
 
