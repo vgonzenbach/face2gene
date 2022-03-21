@@ -42,7 +42,6 @@ seed=42
 set.seed(seed)
 ```
 
-
 In this analysis, psychosis spectrum (PS) status is predicted based on 22q11.2 deletion syndrome (22q) characteristics.  
 
 - First, PCA is performed on the 22q sample to estimate the relative contributions, i.e. the loadings, of each gestalt score to the axes of greatest variability (PCs) in this group.
@@ -117,8 +116,34 @@ plot_loadings(resPCA, dim=2)
 ### Scores
 
 ```{r}
-x22q_df = data.frame(PC1 = resPCA$ind$coord[, 1], PC2 = resPCA$ind$coord[, 2])
+x22q_df = data.frame(case_id = chop_df$case_id, PC1 = resPCA$ind$coord[, 1], PC2 = resPCA$ind$coord[, 2])
 x22q_df %>% ggplot(aes(x=PC1, y=PC2)) + geom_point() 
+```
+
+#### Emotrics correlations
+
+PC2 scores were correlated with Brow Height (Left and Right), Marginal Reflex Distance 2 (Left and Right), and Philtrum measurements. 
+
+```{r}
+# Read in extended data shared on March 2022
+dat = read.csv('data/penn_chop_tp1_f2g_emotrics_passed_clean_030822.csv')
+emotrics = c('Brow_Height_Right', 'Brow_Height_Left', 'Marginal_Reflex_Distance_1_Right', 'Marginal_Reflex_Distance_1_Left', 'Marginal_Reflex_Distance_2_Right', 'Marginal_Reflex_Distance_2_Left', 'Philtrum')
+emotrics_df = dat %>% select(case_id, all_of(emotrics)) 
+
+# Add emotrics to scores data.frame
+x22q_df = merge(x22q_df, emotrics_df, by = 'case_id')
+res = psych::corr.test(x22q_df[, c("PC1", "PC2")], 
+                       x22q_df[, emotrics], 
+                       adjust='fdr')
+
+cor.mat = rbind(res$r[1,], 
+                res$p.adj[1,], 
+                res$r[2,], 
+                res$p.adj[2,])
+
+rownames(cor.mat) = c('PC1', 'p-val', 'PC2', 'p-val')
+cor.mat %>% t()
+sig.emotrics = names(which(cor.mat[4,] < .05))
 ```
 
 ## 2. Testing for differences in 22q-like factor scores between PS and NC
@@ -219,6 +244,25 @@ res.t.test
 car::leveneTest(ps_df$PC2, ps_df$group)
 ```
 
+#### Emotrics
+
+```{r}
+# Order emotrics 
+emo_df = merge(data.frame(case_id = penn_df$case_id, scores_df), emotrics_df, by='case_id')
+# emo_df %>%  select(all_of(emotrics)) %>% lapply(bartlett.test, g=emo_df$group) # All variances are equal after adj
+res.t.test = emo_df %>% select(all_of(emotrics)) %>% lapply(function(x) t.test(x[df$group == 'PS'], x[df$group == 'NC'], var.equal=TRUE))
+```
+
+For univariate t-tests, the only difference between groups was in Philtrum metrics:  
+
+- Brow Height (R): `r apa::apa(res.t.test[["Brow_Height_Right"]])`.  
+- Brow Height (L): `r apa::apa(res.t.test[["Brow_Height_Left"]])`.  
+- Marginal Reflex Distance 1 (R): `r apa::apa(res.t.test[["Marginal_Reflex_Distance_1_Right"]])`.  
+- Marginal Reflex Distance 1 (L): `r apa::apa(res.t.test[["Marginal_Reflex_Distance_1_Left"]])`.  
+- Marginal Reflex Distance 2 (R): `r apa::apa(res.t.test[["Marginal_Reflex_Distance_2_Right"]])`.  
+- Marginal Reflex Distance 2 (L): `r apa::apa(res.t.test[["Marginal_Reflex_Distance_2_Left"]])`.  
+- Philtrum: `r apa::apa(res.t.test[["Philtrum"]])`.  
+
 ## 3. Predicting PS status based on 22q-like PC2
 
 ```{r}
@@ -244,9 +288,6 @@ resROCPC2 = roc(group ~ PC2, data=scores_df)
 plot(resROCPC2, main = sprintf("PC2 predictive of PS status (AUC = %s)", round(auc(resROCPC2),3)))
 ci(resROCPC2)
 ```
-
-
-
 
 ### SZ and CR
 
@@ -275,7 +316,7 @@ ci(resROCPC2)
 PC2 is associated with age and sex.
 
 ```{r}
-cov_df = data.frame(PC1 = scores_df$PC1, PC2 = scores_df$PC2, penn_df[, c("group", "sex", "age", "race")])
+cov_df = data.frame(scores_df, penn_df[, c("sex", "age", "race")])
 anova(lm(PC2 ~ sex + age + race + group, data=cov_df))
 ```
 
@@ -292,13 +333,15 @@ cov_df %>% ggplot(aes(x=PC1, y=PC2, color = sex)) + geom_point() +
 cov_df %>% ggplot(aes(x=age, y=PC2)) + geom_point() + geom_smooth(method='lm')
 ```
 
-## 5. Predicting PS status based on sex- and age-adjusted PC2 
+## 5. Predicting PS status based on adjusted PC2 
+
+### Sex- and -age adjustment
 
 Prediction strength for PS status drops slightly after adjustment. However, prediction of CR status becomes essentially random post-adjustment.
 
 ```{r, message=FALSE}
-scores_df$PC2 = residuals(lm(PC2 ~ sex + age, data=cov_df))
-resROCPC2 = roc(group ~ PC2, data=scores_df)
+cov_df$PC2 = residuals(lm(PC2 ~ sex + age, data=cov_df))
+resROCPC2 = roc(group ~ PC2, data=cov_df)
 plot(resROCPC2, main = sprintf("PC2 predictive of PS status (AUC = %s)", round(auc(resROCPC2),3)))
 ci(resROCPC2)
 ```
@@ -306,7 +349,7 @@ ci(resROCPC2)
 #### Schizophrenia (SZ)
 
 ```{r, message=FALSE}
-sz_df = data.frame(group = penn_df$group, PC2 = scores_df$PC2) %>% filter(group != 'CR')
+sz_df = data.frame(group = penn_df$group, PC2 = cov_df$PC2) %>% filter(group != 'CR')
 resROCPC2 = roc(group ~ PC2, data=sz_df)
 plot(resROCPC2, main = sprintf("PC2 predictive of SZ status (AUC = %s)", round(auc(resROCPC2),3)))
 ci(resROCPC2)
@@ -315,7 +358,39 @@ ci(resROCPC2)
 #### Clinical Risk (CR)
 
 ```{r, message=FALSE}
-cr_df = data.frame(group = penn_df$group, PC2 = scores_df$PC2) %>% filter(group != 'SZ')
+cr_df = data.frame(group = penn_df$group, PC2 = cov_df$PC2) %>% filter(group != 'SZ')
+resROCPC2 = roc(group ~ PC2, data=cr_df)
+plot(resROCPC2, main = sprintf("PC2 predictive of CR status (AUC = %s)", round(auc(resROCPC2),3)))
+ci(resROCPC2)
+```
+
+### Emotrics-adjusted scores
+
+After adjusting PC2 for emotrics, prediction of SZ-status remains strong while CR becomes random.
+
+```{r, message=FALSE}
+emo_df$PC2 = residuals(lm(formula(sprintf("%s ~ %s", 
+                                          "PC2", 
+                                          paste(sig.emotrics, collapse=" + "))), 
+                          data=emo_df))
+resROCPC2 = roc(group ~ PC2, data=emo_df)
+plot(resROCPC2, main = sprintf("PC2 predictive of PS status (AUC = %s)", round(auc(resROCPC2),3)))
+ci(resROCPC2)
+```
+
+#### Schizophrenia (SZ)
+
+```{r, message=FALSE}
+sz_df = merge(penn_df[, c("case_id", "group")], emo_df[,c("case_id", "PC2")]) %>% filter(group != 'CR')
+resROCPC2 = roc(group ~ PC2, data=sz_df)
+plot(resROCPC2, main = sprintf("PC2 predictive of SZ status (AUC = %s)", round(auc(resROCPC2),3)))
+ci(resROCPC2)
+```
+
+#### Clinical Risk (CR)
+
+```{r, message=FALSE}
+cr_df = merge(penn_df[, c("case_id", "group")], emo_df[,c("case_id", "PC2")]) %>% filter(group != 'SZ')
 resROCPC2 = roc(group ~ PC2, data=cr_df)
 plot(resROCPC2, main = sprintf("PC2 predictive of CR status (AUC = %s)", round(auc(resROCPC2),3)))
 ci(resROCPC2)
@@ -325,3 +400,4 @@ ci(resROCPC2)
 
 - PC2 alone is predictive of PS status with an AUC of `r round(pROC::auc(resROCPC2), 3)`!
 - There are variance differences on PC2 between PS groups (SZ vs CR).
+- After adjustments, Schizophrenia (SZ) status remains well-predicted while Clinical Risk (CR) status does not.
