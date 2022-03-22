@@ -134,11 +134,24 @@ plot_loadings(resPCA, dim=1)
 plot_loadings(resPCA, dim=2)
 ```
 
-### Scores
+#### Scores and effects
 
 ```{r}
-x22q_df = data.frame(case_id = chop_df$case_id, PC1 = resPCA$ind$coord[, 1], PC2 = resPCA$ind$coord[, 2])
-x22q_df %>% ggplot(aes(x=PC1, y=PC2)) + geom_point() 
+cov_df = data.frame(chop_df[, c("case_id", "sex", "age", "race")], PC1 = resPCA$ind$coord[, 1], PC2 = resPCA$ind$coord[, 2])
+anova(lm(PC2 ~ sex + age + race, data=cov_df))
+```
+
+#### Sex
+
+```{r}
+cov_df %>% ggplot(aes(x=PC1, y=PC2, color = sex)) + geom_point() + 
+  geom_point(data = cov_df %>% select(PC1, PC2, sex) %>% group_by(sex) %>%  summarize_all(mean), size = 4, shape = 17) + scale_color_manual(values = c("red", "blue")) + ggtitle("22q-like PC scores for 22q sample coded by sex")
+```
+
+#### Age
+
+```{r, message=FALSE}
+cov_df %>% ggplot(aes(x=age, y=PC2)) + geom_point() + geom_smooth(method='lm')
 ```
 
 #### Emotrics correlations
@@ -150,9 +163,9 @@ emotrics = c('Brow_Height_Right', 'Brow_Height_Left', 'Marginal_Reflex_Distance_
 emotrics_df = dat %>% select(case_id, all_of(emotrics)) 
 
 # Add emotrics to scores data.frame
-x22q_df = merge(x22q_df, emotrics_df, by = 'case_id')
-res = psych::corr.test(x22q_df[, c("PC1", "PC2")], 
-                       x22q_df[, emotrics], 
+cov_df = merge(cov_df, emotrics_df, by = 'case_id')
+res = psych::corr.test(cov_df[, c("PC1", "PC2")], 
+                       cov_df[, emotrics], 
                        adjust='fdr')
 
 cor.mat = rbind(res$r[1,], 
@@ -160,8 +173,8 @@ cor.mat = rbind(res$r[1,],
                 res$r[2,], 
                 res$p.adj[2,])
 
-rownames(cor.mat) = c('PC1', 'p-val', 'PC2', 'p-val')
-cor.mat %>% t()
+rownames(cor.mat) = c('PC1', 'p', 'PC2', 'p')
+cor.mat %>% t() %>% kable(format = 'html') %>%  kable_styling("striped", full_width = TRUE)
 sig.emotrics = names(which(cor.mat[4,] < .05))
 ```
 
@@ -212,7 +225,7 @@ scores_df$PC1 = weigh_scores(df, get_loadings(resPCA, 1))
 NC = df$group == "NC"
 PS = df$group == "PS"
 
-res.t.test = t.test(scores_df$PC1[NC], scores_df$PC1[PS])
+res.t.test = t.test(scores_df$PC1[PS], scores_df$PC1[NC])
 names(res.t.test$estimate) = c("mean of NC", "mean of PS")
 res.t.test
 ```
@@ -269,18 +282,50 @@ car::leveneTest(ps_df$PC2, ps_df$group)
 # Order emotrics 
 emo_df = merge(data.frame(case_id = penn_df$case_id, scores_df), emotrics_df, by='case_id')
 # emo_df %>%  select(all_of(emotrics)) %>% lapply(bartlett.test, g=emo_df$group) # All variances are equal after adj
-res.t.test = emo_df %>% select(all_of(emotrics)) %>% lapply(function(x) t.test(x[df$group == 'PS'], x[df$group == 'NC'], var.equal=TRUE))
+res.t = emo_df %>% select(all_of(emotrics)) %>% lapply(function(x) apa::t_test(x[df$group == 'PS'], x[df$group == 'NC'], var.equal=TRUE))
+
+prt.st = function(grp, var, func){
+  # Print stats
+  round(func(emo_df[emo_df$group == grp , var]), 2)
+}
+
+report.t = function(res.t){
+  #' Report t-test in apa format
+  #'' TODO: to fully automate: print groups from data.name, bonus: add formatting/substutions of var.name as parameter
+    for(dep.var in names(res.t)){
+      
+        cat(sprintf("- %s: PS (*M* = %s, *SD* = %s) and NC (*M* = %s, *SD* = %s), %s", 
+                gsub("Right", "(R)", gsub("Left", "(L)", gsub("_", " ", dep.var))),
+                round(mean(res.t[[dep.var]]$data$x), 2), round(sd(res.t[[dep.var]]$data$x), 2),
+                round(mean(res.t[[dep.var]]$data$y), 2), round(sd(res.t[[dep.var]]$data$y), 2),
+                apa::apa(res.t[[dep.var]], print = FALSE)), 
+            sep="\n")
+    }
+}
 ```
 
-For univariate t-tests, the only difference between groups was in Philtrum metrics:  
+For univariate t-tests, the only difference between groups was in Philtrum measurements:  
 
-- Brow Height (R): `r apa::apa(res.t.test[["Brow_Height_Right"]])`.  
-- Brow Height (L): `r apa::apa(res.t.test[["Brow_Height_Left"]])`.  
-- Marginal Reflex Distance 1 (R): `r apa::apa(res.t.test[["Marginal_Reflex_Distance_1_Right"]])`.  
-- Marginal Reflex Distance 1 (L): `r apa::apa(res.t.test[["Marginal_Reflex_Distance_1_Left"]])`.  
+```{r, results='asis'}
+report.t(res.t)
+```
+
+
+```{r, eval=FALSE}
+- Brow Height (R): PS (M = `r prt.st("PS", "Brow_Height_Right", mean)`, SD = `r prt.st("PS", "Brow_Height_Right", sd)`), NC (`r prt.st("NC", "Brow_Height_Right", mean)`, SD = `r prt.st("NC", "Brow_Height_Right", sd)`), `r apa::apa(res.t.test[["Brow_Height_Right"]])`.  
+
+- Brow Height (L): PS (M = `r prt.st("PS", "Brow_Height_Left", mean)`, SD = `r prt.st("PS", "Brow_Height_Left", sd)`), NC (`r prt.st("NC", "Brow_Height_Left", mean)`, SD = `r prt.st("NC", "Brow_Height_Left", sd)`), `r apa::apa(res.t.test[["Brow_Height_Left"]])`. 
+
+- Marginal Reflex Distance 1 (R): PS (M = `r prt.st("PS", "Marginal_Reflex_Distance_1_Right", mean)`, SD = `r prt.st("PS", "Marginal_Reflex_Distance_1_Right", sd)`), NC (`r prt.st("NC", "Marginal_Reflex_Distance_1_Right", mean)`, SD = `r prt.st("NC", "Marginal_Reflex_Distance_1_Right", sd)`), `r apa::apa(res.t.test[["Marginal_Reflex_Distance_1_Right"]])`.  
+
+- Marginal Reflex Distance 1 (L): PS (M = `r prt.st("PS", "Marginal_Reflex_Distance_1_Left", mean)`, SD = `r prt.st("PS", "Marginal_Reflex_Distance_1_Left", sd)`), NC (`r prt.st("NC", "Marginal_Reflex_Distance_1_Left", mean)`, SD = `r prt.st("NC", "Marginal_Reflex_Distance_1_Left", sd)`), `r apa::apa(res.t.test[["Marginal_Reflex_Distance_1_Left"]])`.  
+
 - Marginal Reflex Distance 2 (R): `r apa::apa(res.t.test[["Marginal_Reflex_Distance_2_Right"]])`.  
 - Marginal Reflex Distance 2 (L): `r apa::apa(res.t.test[["Marginal_Reflex_Distance_2_Left"]])`.  
 - Philtrum: `r apa::apa(res.t.test[["Philtrum"]])`.  
+
+```
+
 
 ## 3. Predicting PS status based on 22q-like PC2
 
@@ -330,35 +375,14 @@ plot(resROCPC2, main = sprintf("PC2 predictive of CR status (AUC = %s)", round(a
 ci(resROCPC2)
 ```
 
-## 4. Association of PC2 with demographics and phenotypic information
-
-PC2 is associated with age and sex.
-
-```{r}
-cov_df = data.frame(scores_df, penn_df[, c("sex", "age", "race")])
-anova(lm(PC2 ~ sex + age + race + group, data=cov_df))
-```
-
-#### Sex
-
-```{r}
-cov_df %>% ggplot(aes(x=PC1, y=PC2, color = sex)) + geom_point() + 
-  geom_point(data = cov_df %>% select(PC1, PC2, sex) %>% group_by(sex) %>%  summarize_all(mean), size = 4, shape = 17) + scale_color_manual(values = c("red", "blue")) + ggtitle("22q-like PC scores for Penn sample coded by sex")
-```
-
-#### Age
-
-```{r, message=FALSE}
-cov_df %>% ggplot(aes(x=age, y=PC2)) + geom_point() + geom_smooth(method='lm')
-```
-
-## 5. Predicting PS status based on adjusted PC2 
+## 4. Predicting PS status based on adjusted PC2 
 
 ### Sex- and -age adjustment
 
 Prediction strength for PS status drops slightly after adjustment. However, prediction of CR status becomes essentially random post-adjustment.
 
 ```{r, message=FALSE}
+cov_df = data.frame(scores_df, penn_df[, c("case_id", "sex", "age", "race")])
 cov_df$PC2 = residuals(lm(PC2 ~ sex + age, data=cov_df))
 resROCPC2 = roc(group ~ PC2, data=cov_df)
 plot(resROCPC2, main = sprintf("PC2 predictive of PS status (AUC = %s)", round(auc(resROCPC2),3)))
