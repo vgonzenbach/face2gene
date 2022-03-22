@@ -154,7 +154,7 @@ cov_df %>% ggplot(aes(x=PC1, y=PC2, color = sex)) + geom_point() +
 cov_df %>% ggplot(aes(x=age, y=PC2)) + geom_point() + geom_smooth(method='lm')
 ```
 
-#### Emotrics correlations
+#### Emotrics
 
 PC2 scores were correlated with Brow Height (Left and Right), Marginal Reflex Distance 2 (Left and Right), and Philtrum measurements. 
 
@@ -163,20 +163,91 @@ emotrics = c('Brow_Height_Right', 'Brow_Height_Left', 'Marginal_Reflex_Distance_
 emotrics_df = dat %>% select(case_id, all_of(emotrics)) 
 
 # Add emotrics to scores data.frame
-cov_df = merge(cov_df, emotrics_df, by = 'case_id')
-res = psych::corr.test(cov_df[, c("PC1", "PC2")], 
-                       cov_df[, emotrics], 
+emo_df = merge(cov_df, emotrics_df, by = 'case_id')
+res.cor = psych::corr.test(emo_df[, c("PC1", "PC2")], 
+                       emo_df[, emotrics], 
                        adjust='fdr')
 
-cor.mat = rbind(res$r[1,], 
-                res$p.adj[1,], 
-                res$r[2,], 
-                res$p.adj[2,])
+cor.mat = rbind(res.cor$r[1,], 
+                res.cor$p.adj[1,], 
+                res.cor$r[2,], 
+                res.cor$p.adj[2,])
 
 rownames(cor.mat) = c('PC1', 'p', 'PC2', 'p')
 cor.mat %>% t() %>% kable(format = 'html') %>%  kable_styling("striped", full_width = TRUE)
 sig.emotrics = names(which(cor.mat[4,] < .05))
 ```
+
+#### IQ
+
+There were no significant relationships with IQ.
+
+```{r}
+iq = c("VIQ", "PIQ", "FSIQ")
+iq_df = dat %>% select(case_id, all_of(iq)) 
+
+# Add emotrics to scores data.frame
+iq_df = merge(cov_df, iq_df, by = 'case_id')
+res.cor = psych::corr.test(iq_df[, c("PC1", "PC2")], 
+                       iq_df[, iq], 
+                       adjust='fdr')
+
+cor.mat = rbind(res.cor$r[1,], 
+                res.cor$p.adj[1,], 
+                res.cor$r[2,], 
+                res.cor$p.adj[2,])
+
+rownames(cor.mat) = c('PC1', 'p', 'PC2', 'p')
+cor.mat %>% t() %>% kable(format = 'html') %>%  kable_styling("striped", full_width = TRUE)
+sig.iq = names(which(cor.mat[4,] < .05))
+```
+
+#### Pathology
+
+```{r}
+patho_df = dat[, c("case_id", "DSM.Dx", "PS")] 
+
+# Make factors
+patho_df$DSM.Dx = as.factor(recode(patho_df$DSM.Dx, `1` = "Yes", `0` = "No"))
+patho_df$PS = as.factor(recode(patho_df$PS, `1` = "Yes", `0` = "No"))
+patho_df = merge(patho_df, cov_df, by="case_id") %>% drop_na()
+
+## Plot DMS Dx
+patho_df %>% ggplot(aes(x=PC1, y=PC2, color = DSM.Dx)) + geom_point() + 
+  geom_point(data = patho_df %>% select(PC1, PC2, DSM.Dx) %>% group_by(DSM.Dx) %>%  summarize_all(mean), size = 4, shape = 17) + scale_color_manual(values = c("magenta", "gold")) + ggtitle("22q-like PC scores for 22q sample coded by DSM.Dx")
+```
+
+```{r}
+report.t = function(res.t, x, y){
+  #' Report t-test in apa format
+  #'' TODO: to fully automate: print groups from data.name, bonus: add formatting/substutions of var.name as parameter
+  #' Make this work for a single test (check input is list)
+
+    cat(sprintf("%s (*M* = %s, *SD* = %s) and %s (*M* = %s, *SD* = %s), %s", 
+            x,
+            round(mean(res.t$data$x), 2), round(sd(res.t$data$x), 2),
+            y,
+            round(mean(res.t$data$y), 2), round(sd(res.t$data$y), 2),
+            apa::apa(res.t, print = FALSE)), 
+        sep="\n")
+}
+```
+
+
+
+```{r}
+## Plot PS
+tmp_df = patho_df %>% select(PC1, PC2, PS) %>% drop_na()
+tmp_df %>% ggplot(aes(x=PC1, y=PC2, color = PS)) + geom_point() + 
+  geom_point(data = tmp_df %>% select(PC1, PC2, PS) %>% group_by(PS) %>%  summarize_all(mean), size = 4, shape = 17) + scale_color_manual(values = c("magenta", "gold")) + ggtitle("22q-like PC scores for 22q sample coded by PS")
+```
+
+```{r, results='asis'}
+x = patho_df$PC2[patho_df$PS == "Yes"]
+y = patho_df$PC2[patho_df$PS == "Yes"]
+report.t(apa::t_test(x, y), "PS=Yes", "PS=No")
+```
+
 
 ## 2. Testing for differences in 22q-like factor scores between PS and NC
 
