@@ -884,6 +884,53 @@ plot(resROCPC2, main = sprintf("PC2 predictive of CR status (AUC = %s)", round(a
 ci(resROCPC2)
 ```
 
+### GAF_H adjustment
+
+Prediction strength for PS status decreases after adjusting for GAF_H.
+
+```{r, message=FALSE}
+cov_gafh_df = data.frame(scores_df, 
+                    penn_df[, c("case_id", "bbl_id", "GAF_H")]) %>%
+  drop_na()
+cov_gafh_df$PC2 = residuals(lm(PC2 ~ GAF_H, data=cov_gafh_df))
+resROCPC2 = roc(group ~ PC2, data=cov_gafh_df)
+plot(resROCPC2, main = sprintf("PC2 predictive of PS status (AUC = %s)", round(auc(resROCPC2),3)))
+ci(resROCPC2)
+```
+
+#### Schizophrenia (SZ)
+Adjusting for GAF_H decreases prediction of SZ.
+
+```{r, message=FALSE}
+sz_gafh_df = merge(cov_gafh_df %>%
+                       select(!group),
+                     sz_cr,
+                     by="bbl_id") %>%
+  filter(group != 'CR')
+
+resROCPC2 = roc(group ~ PC2, data=sz_gafh_df)
+plot(resROCPC2, main = sprintf("PC2 predictive of SZ status (AUC = %s)", round(auc(resROCPC2),3)))
+ci(resROCPC2)
+```
+
+#### Clinical Risk (CR)
+
+Adjusting for GAF_H increases prediction of CR.
+
+```{r, message=FALSE}
+cr_gafh_df = merge(cov_gafh_df %>%
+                       select(!group),
+                     sz_cr,
+                     by="bbl_id") %>%
+  filter(group != 'SZ')
+
+
+resROCPC2 = roc(group ~ PC2, data=cr_gafh_df)
+plot(resROCPC2, main = sprintf("PC2 predictive of CR status (AUC = %s)", round(auc(resROCPC2),3)))
+ci(resROCPC2)
+```
+
+
 
 
 ### Emotrics-adjusted scores
