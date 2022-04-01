@@ -23,9 +23,15 @@ library(pander)
 library(pROC)
 library(kableExtra)
 
-chop_df = read.csv('data/Chop_merged_wideV_tp1.csv')
-penn_df = read.csv("data/Penn_merged_wideV.csv")[,-1] %>% filter(group != "?") # 3 observations in '?' group
-dat = read.csv('data/penn_chop_tp1_f2g_emotrics_passed_clean_030822.csv') # Read in extended data shared on March 2022
+# chop_df = read.csv('data/Chop_merged_wideV_tp1.csv')
+# penn_df = read.csv("data/Penn_merged_wideV.csv")[,-1] %>% filter(group != "?") # 3 observations in '?' group
+# Read in extended data shared on March 2022
+dat = read.csv('data/penn_chop_tp1_f2g_emotrics_passed_clean_030822.csv',
+               check.names = FALSE) 
+sz_cr = read.csv('data/penn_szcr_chop_tp1_wideV_f2g_030822.csv')
+sz_cr = sz_cr[sz_cr$group %in% c('TD', 'SZ', 'CR'), c('bbl_id', 'group')]
+chop_df = dat[dat$group == '22q', ]
+penn_df = dat[dat$group != '22q', ]
 
 # Exclude columns with only zeros
 get_zero_cols = function(df){
@@ -56,18 +62,22 @@ In this analysis, psychosis spectrum (PS) status is predicted based on 22q11.2 d
 Sample sizes for face2gene scores and the original prediction task:
 
 ```{r}
-comb_df = data.frame(case_id = c(chop_df$case_id, penn_df$case_id), group=c(chop_df$group, penn_df$group))
-t(table(comb_df$group)) %>% kable(format="html") %>% kable_styling("striped", full_width = TRUE)
+# comb_df = data.frame(case_id = c(chop_df$case_id, penn_df$case_id), group=c(chop_df$group, penn_df$group))
+t(table(dat$group)) %>% kable(format="html") %>% kable_styling("striped", full_width = TRUE)
 ```
 
 Total sample sizes in 03/08/22 data (first row) and non-missing data per variable:  
 
 ```{r}
 # Get total in extended data
-n_size = t(table(comb_df[comb_df$case_id %in% dat$case_id, "group"]))
-vars= c("height", "weight", "GAF_C", "GAF_H", "MMSE", "VIQ", "PIQ", "FSIQ", "DSM.Dx", "PS")  
-n_df = data.frame(case_id = dat$case_id, !is.na.data.frame(dat[,vars]))
-n_df = merge(comb_df, n_df, by='case_id')
+# n_size = t(table(comb_df[comb_df$case_id %in% dat$case_id, "group"]))
+n_size = t(table(dat$group))
+vars= c("height", "weight", "GAF_C", "GAF_H", "MMSE", "VIQ", "PIQ", "FSIQ", "DSM Dx", "PS")  
+n_df = data.frame(case_id = dat$case_id, 
+                  group = dat$group,
+                  !is.na.data.frame(dat[,vars]),
+                  check.names = FALSE)
+# n_df = merge(dat, n_df, by='case_id')
 n_df = n_df %>% select(-case_id) %>% group_by(group) %>% summarize_all(sum)
 n_tbl = rbind(n_size, t(n_df[,-1]))
 n_tbl = cbind(n_tbl, rowSums(n_tbl))
@@ -84,7 +94,15 @@ PCA was performed without scaling on the 22q sample alone.
 ### Scree Plot
 
 ```{r}
-resPCA = PCA(chop_df[,-c(1:7)], scale.unit = FALSE, graph = FALSE, ncp=length(chop_df[,-c(1:7)]))
+syndromes = colnames(chop_df)[which(colnames(chop_df) == '22q11.2 deletion syndrome'):ncol(chop_df)]
+demographics = colnames(chop_df)[1:(which(colnames(chop_df) == 'Brow_Height_Right') - 1)]
+chop_df = chop_df[, c(demographics, syndromes)]
+# resPCA = PCA(chop_df[,-c(1:7)], scale.unit = FALSE, graph = FALSE, ncp=length(chop_df[,-c(1:7)]))
+resPCA = PCA(chop_df[, syndromes], 
+             scale.unit = FALSE, 
+             graph = FALSE, 
+             ncp=length(chop_df[,syndromes]))
+
 fviz_screeplot(resPCA)
 ```
 
@@ -137,21 +155,33 @@ plot_loadings(resPCA, dim=2)
 #### Scores and effects
 
 ```{r}
-cov_df = data.frame(chop_df[, c("case_id", "sex", "age", "race")], PC1 = resPCA$ind$coord[, 1], PC2 = resPCA$ind$coord[, 2])
+cov_df = data.frame(chop_df[, c("case_id", "sex", "age", "race")], 
+                    PC1 = resPCA$ind$coord[, 1], 
+                    PC2 = resPCA$ind$coord[, 2])
 anova(lm(PC2 ~ sex + age + race, data=cov_df))
 ```
 
 #### Sex
 
 ```{r}
-cov_df %>% ggplot(aes(x=PC1, y=PC2, color = sex)) + geom_point() + 
-  geom_point(data = cov_df %>% select(PC1, PC2, sex) %>% group_by(sex) %>%  summarize_all(mean), size = 4, shape = 17) + scale_color_manual(values = c("red", "blue")) + ggtitle("22q-like PC scores for 22q sample coded by sex")
+cov_df %>% 
+  ggplot(aes(x=PC1, y=PC2, color = sex)) + 
+  geom_point() + 
+  geom_point(data = cov_df %>% 
+               select(PC1, PC2, sex) %>% 
+               group_by(sex) %>%  
+               summarize_all(mean), size = 4, shape = 17) + 
+  scale_color_manual(values = c("red", "blue")) + 
+  ggtitle("22q-like PC scores for 22q sample coded by sex")
 ```
 
 #### Age
 
 ```{r, message=FALSE}
-cov_df %>% ggplot(aes(x=age, y=PC2)) + geom_point() + geom_smooth(method='lm')
+cov_df %>% 
+  ggplot(aes(x=age, y=PC2)) + 
+  geom_point() + 
+  geom_smooth(method='lm')
 ```
 
 #### Emotrics
@@ -202,19 +232,56 @@ cor.mat %>% t() %>% kable(format = 'html') %>%  kable_styling("striped", full_wi
 sig.iq = names(which(cor.mat[4,] < .05))
 ```
 
+#### Height
+
+There were no significant relationships with IQ.
+
+```{r}
+height_df = dat %>% select(case_id, all_of("height")) 
+
+# Add emotrics to scores data.frame
+height_df$height = sapply(height_df$height,
+                          FUN = function(x) {
+                            x = unlist(strsplit(x, "'"))
+                            ft = as.numeric(x[1]) * 12
+                            inch = as.numeric(x[2])
+                            ft + inch
+                          })
+height_df = merge(cov_df, height_df, by = 'case_id')
+res.cor = psych::corr.test(height_df[, c("PC1", "PC2")], 
+                           height_df[, "height"],
+                           adjust='fdr')
+
+cor.mat = rbind(res.cor$r[1,], 
+                res.cor$p.adj[1,], 
+                res.cor$r[2,], 
+                res.cor$p.adj[2,])
+
+rownames(cor.mat) = c('PC1', 'p', 'PC2', 'p')
+cor.mat %>% t() %>% kable(format = 'html') %>%  kable_styling("striped", full_width = TRUE)
+sig.height = names(which(cor.mat[4,] < .05))
+```
+
 #### Pathology
 
 ```{r}
-patho_df = dat[, c("case_id", "DSM.Dx", "PS")] 
+patho_df = dat[, c("case_id", "DSM Dx", "PS")] 
 
 # Make factors
-patho_df$DSM.Dx = as.factor(recode(patho_df$DSM.Dx, `1` = "Yes", `0` = "No"))
+patho_df$`DSM Dx` = as.factor(recode(patho_df$`DSM Dx`, `1` = "Yes", `0` = "No"))
 patho_df$PS = as.factor(recode(patho_df$PS, `1` = "Yes", `0` = "No"))
 patho_df = merge(patho_df, cov_df, by="case_id") %>% drop_na()
 
 ## Plot DMS Dx
-patho_df %>% ggplot(aes(x=PC1, y=PC2, color = DSM.Dx)) + geom_point() + 
-  geom_point(data = patho_df %>% select(PC1, PC2, DSM.Dx) %>% group_by(DSM.Dx) %>%  summarize_all(mean), size = 4, shape = 17) + scale_color_manual(values = c("magenta", "gold")) + ggtitle("22q-like PC scores for 22q sample coded by DSM.Dx")
+patho_df %>% 
+  ggplot(aes(x=PC1, y=PC2, color = `DSM Dx`)) + 
+  geom_point() + 
+  geom_point(data = patho_df %>% select(PC1, PC2, `DSM Dx`) %>% 
+               group_by(`DSM Dx`) %>%  
+               summarize_all(mean), 
+             size = 4, shape = 17) + 
+scale_color_manual(values = c("magenta", "gold")) + 
+  ggtitle("22q-like PC scores for 22q sample coded by DSM Dx")
 ```
 
 ```{r}
@@ -238,8 +305,16 @@ report.t = function(res.t, x, y){
 ```{r}
 ## Plot PS
 tmp_df = patho_df %>% select(PC1, PC2, PS) %>% drop_na()
-tmp_df %>% ggplot(aes(x=PC1, y=PC2, color = PS)) + geom_point() + 
-  geom_point(data = tmp_df %>% select(PC1, PC2, PS) %>% group_by(PS) %>%  summarize_all(mean), size = 4, shape = 17) + scale_color_manual(values = c("magenta", "gold")) + ggtitle("22q-like PC scores for 22q sample coded by PS")
+tmp_df %>% 
+  ggplot(aes(x=PC1, y=PC2, color = PS)) + 
+  geom_point() + 
+  geom_point(data = tmp_df %>% 
+               select(PC1, PC2, PS) %>% 
+               group_by(PS) %>%  
+               summarize_all(mean), 
+             size = 4, shape = 17) + 
+  scale_color_manual(values = c("magenta", "gold")) + 
+  ggtitle("22q-like PC scores for 22q sample coded by PS")
 ```
 
 ```{r, results='asis'}
@@ -256,9 +331,10 @@ For the Penn sample (i.e. PS and NC groups), 2 factor scores are computed using 
 Note: any reference to PCs/factor scores below refers to those computed for the Penn sample. 
 
 ```{r}
-demographics = c("bbl_id", "case_id", "sex", "race", "age", "age_at_photo")
-df = penn_df %>% select(-c(all_of(demographics)))
-df$group = recode(df$group, SZ = "PS", CR = "PS")
+# demographics = c("bbl_id", "case_id", "sex", "race", "age", "age_at_photo")
+# demographics = c("bbl_id", "case_id", "sex", "race", "age")
+# df = penn_df %>% select(-c(all_of(demographics)))
+# df$group = recode(df$group, SZ = "PS", CR = "PS")
 
 weigh_scores = function(df, coefs){
   #' Returns a linear combination of named scores included in 'coefs' 
@@ -291,13 +367,16 @@ weigh_scores2 = function(df, resPCA){
 No significant differences between groups.
 
 ```{r}
-scores_df = data.frame(group = df$group)
-scores_df$PC1 = weigh_scores(df, get_loadings(resPCA, 1))
-NC = df$group == "NC"
-PS = df$group == "PS"
+scores_df = data.frame(group = penn_df$group)
+scores_df$PC1 = weigh_scores(penn_df[, which(colnames(penn_df) == '22q11.2 deletion syndrome'):ncol(penn_df)],
+                             get_loadings(resPCA, 1))
+# NC = df$group == "NC"
+TD = penn_df$group == 'TD'
+PS = penn_df$group == "PS"
 
-res.t.test = t.test(scores_df$PC1[PS], scores_df$PC1[NC])
-names(res.t.test$estimate) = c("mean of NC", "mean of PS")
+# res.t.test = t.test(scores_df$PC1[PS], scores_df$PC1[NC])
+res.t.test = t.test(scores_df$PC1[TD], scores_df$PC1[PS])
+names(res.t.test$estimate) = c("mean of TD", "mean of PS")
 res.t.test
 ```
 
@@ -306,16 +385,23 @@ res.t.test
 PC2 shows a difference between NC and PS groups.
 
 ```{r}
-scores_df$PC2 = weigh_scores(df, get_loadings(resPCA, 2))
+scores_df$PC2 = weigh_scores(penn_df[, which(colnames(penn_df) == '22q11.2 deletion syndrome'):ncol(penn_df)],
+                             get_loadings(resPCA, 2))
 
-res.t.test = t.test(scores_df$PC2[NC], scores_df$PC2[PS])
-names(res.t.test$estimate) = c("mean of NC", "mean of PS")
+res.t.test = t.test(scores_df$PC2[TD], scores_df$PC2[PS])
+names(res.t.test$estimate) = c("mean of TD", "mean of PS")
 res.t.test
 ```
 
 ```{r}
-scores_df %>% ggplot(aes(x=PC1, y=PC2, color = group)) + geom_point() + 
-  geom_point(data = scores_df %>% group_by(group) %>% summarize_all(mean), size = 4, shape = 17) + scale_color_manual(values = c("dodgerblue", "salmon")) + ggtitle("22q-like PC Scores of Penn sample")
+scores_df %>% 
+  ggplot(aes(x=PC1, y=PC2, color = group)) + 
+  geom_point() + 
+  geom_point(data = scores_df %>% group_by(group) %>% 
+               summarize_all(mean), 
+             size = 4, shape = 17) + 
+  scale_color_manual(values = c("salmon", "dodgerblue")) + 
+  ggtitle("22q-like PC Scores of Penn sample")
 ```
 
 
@@ -324,17 +410,30 @@ scores_df %>% ggplot(aes(x=PC1, y=PC2, color = group)) + geom_point() +
 We see a difference in variances on PC2.
 
 ```{r}
-ps_df = data.frame(group = as.factor(penn_df$group),
-          PC1 = scores_df$PC1, PC2 = scores_df$PC2) %>% filter(group!= "NC") 
-ps_df %>% ggplot(aes(x=PC1, y=PC2, color = group)) + geom_point() + 
-  geom_point(data = ps_df %>%  group_by(group) %>% summarize_all(mean), size = 4, shape = 17) + scale_color_manual(values = c("orange", "purple"))
+ps_td_df = merge(penn_df %>% select(!group), 
+              sz_cr, by='bbl_id')
+ps_td_df = data.frame(group = as.factor(ps_df$group),
+                   PC1 = scores_df$PC1, 
+                   PC2 = scores_df$PC2)
+
+ps_df =  ps_td_df %>% 
+  filter(group != "TD") 
+
+ps_df %>% 
+  ggplot(aes(x=PC1, y=PC2, color = group)) + 
+  geom_point() + 
+  geom_point(data = ps_df %>%  
+               group_by(group) %>% 
+               summarize_all(mean), 
+             size = 4, shape = 17) + 
+  scale_color_manual(values = c("orange", "purple"))
 ```
 
 #### PC2: T-test
 
 ```{r}
-SZ = penn_df$group=="SZ"
-CR = penn_df$group=="CR"
+SZ = ps_td_df$group=="SZ"
+CR = ps_td_df$group=="CR"
 
 res.t.test = t.test(scores_df$PC2[SZ], scores_df$PC2[CR])
 names(res.t.test$estimate) = c("mean of SZ", "mean of CR")
@@ -351,9 +450,16 @@ car::leveneTest(ps_df$PC2, ps_df$group)
 
 ```{r}
 # Order emotrics 
-emo_df = merge(data.frame(case_id = penn_df$case_id, scores_df), emotrics_df, by='case_id')
+emo_df = merge(data.frame(case_id = penn_df$case_id, 
+                          bbl_id = penn_df$bbl_id,
+                          scores_df), 
+               emotrics_df, 
+               by='case_id')
 # emo_df %>%  select(all_of(emotrics)) %>% lapply(bartlett.test, g=emo_df$group) # All variances are equal after adj
-res.t = emo_df %>% select(all_of(emotrics)) %>% lapply(function(x) apa::t_test(x[df$group == 'PS'], x[df$group == 'NC'], var.equal=TRUE))
+res.t = emo_df %>% 
+  select(all_of(emotrics)) %>% 
+  lapply(function(x) apa::t_test(x[emo_df$group == 'PS'], x[emo_df$group == 'TD'], 
+                                 var.equal=TRUE))
 
 prt.st = function(grp, var, func){
   # Print stats
@@ -365,7 +471,7 @@ report.t = function(res.t){
   #'' TODO: to fully automate: print groups from data.name, bonus: add formatting/substutions of var.name as parameter
     for(dep.var in names(res.t)){
       
-        cat(sprintf("- %s: PS (*M* = %s, *SD* = %s) and NC (*M* = %s, *SD* = %s), %s", 
+        cat(sprintf("- %s: PS (*M* = %s, *SD* = %s) and TD (*M* = %s, *SD* = %s), %s", 
                 gsub("Right", "(R)", gsub("Left", "(L)", gsub("_", " ", dep.var))),
                 round(mean(res.t[[dep.var]]$data$x), 2), round(sd(res.t[[dep.var]]$data$x), 2),
                 round(mean(res.t[[dep.var]]$data$y), 2), round(sd(res.t[[dep.var]]$data$y), 2),
@@ -431,7 +537,10 @@ Focusing the prediction on PS subgroups, results are similar to predicting on th
 #### Schizophrenia (SZ)
 
 ```{r, message=FALSE}
-sz_df = data.frame(group = penn_df$group, PC2 = scores_df$PC2) %>% filter(group != 'CR')
+sz_df = data.frame(group = as.character(ps_td_df$group), 
+                   PC2 = ps_td_df$PC2) %>% 
+  filter(group != 'CR')
+
 resROCPC2 = roc(group ~ PC2, data=sz_df)
 plot(resROCPC2, main = sprintf("PC2 predictive of SZ status (AUC = %s)", round(auc(resROCPC2),3)))
 ci(resROCPC2)
@@ -440,7 +549,10 @@ ci(resROCPC2)
 #### Clinical Risk (CR)
 
 ```{r, message=FALSE}
-cr_df = data.frame(group = penn_df$group, PC2 = scores_df$PC2) %>% filter(group != 'SZ')
+cr_df = data.frame(group = as.character(ps_td_df$group), 
+                   PC2 = ps_td_df$PC2) %>% 
+  filter(group != 'SZ')
+
 resROCPC2 = roc(group ~ PC2, data=cr_df)
 plot(resROCPC2, main = sprintf("PC2 predictive of CR status (AUC = %s)", round(auc(resROCPC2),3)))
 ci(resROCPC2)
@@ -453,7 +565,9 @@ ci(resROCPC2)
 Prediction strength for PS status drops slightly after adjustment. However, prediction of CR status becomes essentially random post-adjustment.
 
 ```{r, message=FALSE}
-cov_df = data.frame(scores_df, penn_df[, c("case_id", "sex", "age", "race")])
+cov_df = data.frame(scores_df, 
+                    penn_df[, c("case_id", "sex", "age", "race")]) %>%
+  drop_na()
 cov_df$PC2 = residuals(lm(PC2 ~ sex + age, data=cov_df))
 resROCPC2 = roc(group ~ PC2, data=cov_df)
 plot(resROCPC2, main = sprintf("PC2 predictive of PS status (AUC = %s)", round(auc(resROCPC2),3)))
@@ -463,7 +577,18 @@ ci(resROCPC2)
 #### Schizophrenia (SZ)
 
 ```{r, message=FALSE}
-sz_df = data.frame(group = penn_df$group, PC2 = cov_df$PC2) %>% filter(group != 'CR')
+sz_cr_df = data.frame(bbl_id = penn_df$bbl_id,
+                   group = penn_df$group,
+                   age = penn_df$age) %>%
+  drop_na()
+
+sz_cr_df$PC2 = cov_df$PC2
+
+sz_cr_df = merge(sz_cr, sz_cr_df %>% select(!group),
+              by = 'bbl_id') 
+sz_df = sz_cr_df %>%
+  filter(group != 'CR')
+
 resROCPC2 = roc(group ~ PC2, data=sz_df)
 plot(resROCPC2, main = sprintf("PC2 predictive of SZ status (AUC = %s)", round(auc(resROCPC2),3)))
 ci(resROCPC2)
@@ -472,7 +597,9 @@ ci(resROCPC2)
 #### Clinical Risk (CR)
 
 ```{r, message=FALSE}
-cr_df = data.frame(group = penn_df$group, PC2 = cov_df$PC2) %>% filter(group != 'SZ')
+cr_df = sz_cr_df %>%
+  filter(group != 'SZ')
+
 resROCPC2 = roc(group ~ PC2, data=cr_df)
 plot(resROCPC2, main = sprintf("PC2 predictive of CR status (AUC = %s)", round(auc(resROCPC2),3)))
 ci(resROCPC2)
@@ -495,7 +622,9 @@ ci(resROCPC2)
 #### Schizophrenia (SZ)
 
 ```{r, message=FALSE}
-sz_df = merge(penn_df[, c("case_id", "group")], emo_df[,c("case_id", "PC2")]) %>% filter(group != 'CR')
+sz_df = merge(sz_cr, 
+              emo_df[,c("bbl_id", "PC2")]) %>% 
+  filter(group != 'CR')
 resROCPC2 = roc(group ~ PC2, data=sz_df)
 plot(resROCPC2, main = sprintf("PC2 predictive of SZ status (AUC = %s)", round(auc(resROCPC2),3)))
 ci(resROCPC2)
@@ -504,7 +633,9 @@ ci(resROCPC2)
 #### Clinical Risk (CR)
 
 ```{r, message=FALSE}
-cr_df = merge(penn_df[, c("case_id", "group")], emo_df[,c("case_id", "PC2")]) %>% filter(group != 'SZ')
+cr_df = merge(sz_cr, 
+              emo_df[,c("bbl_id", "PC2")]) %>% 
+  filter(group != 'SZ')
 resROCPC2 = roc(group ~ PC2, data=cr_df)
 plot(resROCPC2, main = sprintf("PC2 predictive of CR status (AUC = %s)", round(auc(resROCPC2),3)))
 ci(resROCPC2)
