@@ -485,7 +485,7 @@ We see a difference in variances on PC2.
 ```{r}
 ps_td_df = merge(penn_df %>% select(!group), 
               sz_cr, by='bbl_id')
-ps_td_df = data.frame(group = as.factor(ps_df$group),
+ps_td_df = data.frame(group = as.factor(ps_td_df$group),
                    PC1 = scores_df$PC1, 
                    PC2 = scores_df$PC2)
 
@@ -576,6 +576,37 @@ report.t(res.t)
 
 ```
 
+
+#### PS vs TD Height
+
+Height between PS and TD not significantly different.
+
+```{r}
+ps_td_height = dat %>% 
+  select(group, height)
+
+ps_td_height$height = sapply(ps_td_height$height,
+                          FUN = function(x) {
+                            x = unlist(strsplit(x, "'"))
+                            ft = as.numeric(x[1]) * 12
+                            inch = as.numeric(x[2])
+                            ft + inch
+                          })
+t.test(ps_td_height$height[ps_td_height$group == 'TD'],
+       ps_td_height$height[ps_td_height$group == 'PS'])
+```
+
+#### PS vs TD Weight
+
+Weight between PS and TD not significantly different.
+
+```{r}
+ps_td_weight = dat %>% 
+  select(group, weight)
+
+t.test(ps_td_weight$weight[ps_td_weight$group == 'TD'],
+       ps_td_weight$weight[ps_td_weight$group == 'PS'])
+```
 
 ## 3. Predicting PS status based on 22q-like PC2
 
