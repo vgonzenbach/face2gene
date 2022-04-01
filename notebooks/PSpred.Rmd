@@ -633,6 +633,19 @@ t.test(ps_td_gafh$GAF_H[ps_td_gafh$group == 'TD'],
        ps_td_gafh$GAF_H[ps_td_gafh$group == 'PS'])
 ```
 
+
+#### PS vs TD MMSE
+
+MMSE between PS and TD are not significantly different.
+
+```{r}
+ps_td_mmse = dat %>% 
+  select(group, MMSE)
+
+t.test(ps_td_mmse$MMSE[ps_td_mmse$group == 'TD'],
+       ps_td_mmse$MMSE[ps_td_mmse$group == 'PS'])
+```
+
 ## 3. Predicting PS status based on 22q-like PC2
 
 ```{r}
