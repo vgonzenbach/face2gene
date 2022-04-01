@@ -716,6 +716,21 @@ plot(resROCPC2, main = sprintf("PC2 predictive of PS status (AUC = %s)", round(a
 ci(resROCPC2)
 ```
 
+### Height adjustment
+
+Prediction strength for PS status doesn't really change after adjusting for height.
+
+```{r, message=FALSE}
+cov_height_df = data.frame(scores_df, 
+                    penn_df[, c("case_id", "height")]) %>%
+  drop_na()
+cov_height_df$PC2 = residuals(lm(PC2 ~ height, data=cov_height_df))
+resROCPC2 = roc(group ~ PC2, data=cov_height_df)
+plot(resROCPC2, main = sprintf("PC2 predictive of PS status (AUC = %s)", round(auc(resROCPC2),3)))
+ci(resROCPC2)
+```
+
+
 #### Schizophrenia (SZ)
 
 ```{r, message=FALSE}
