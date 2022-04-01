@@ -931,6 +931,51 @@ ci(resROCPC2)
 ```
 
 
+### MMSE adjustment
+
+Prediction strength for PS status decreases after adjusting for MMSe.
+
+```{r, message=FALSE}
+cov_mmse_df = data.frame(scores_df, 
+                    penn_df[, c("case_id", "bbl_id", "MMSE")]) %>%
+  drop_na()
+cov_mmse_df$PC2 = residuals(lm(PC2 ~ MMSE, data=cov_mmse_df))
+resROCPC2 = roc(group ~ PC2, data=cov_mmse_df)
+plot(resROCPC2, main = sprintf("PC2 predictive of PS status (AUC = %s)", round(auc(resROCPC2),3)))
+ci(resROCPC2)
+```
+
+#### Schizophrenia (SZ)
+Adjusting for MMSE decreases prediction of SZ.
+
+```{r, message=FALSE}
+sz_mmse_df = merge(cov_mmse_df %>%
+                       select(!group),
+                     sz_cr,
+                     by="bbl_id") %>%
+  filter(group != 'CR')
+
+resROCPC2 = roc(group ~ PC2, data=sz_mmse_df)
+plot(resROCPC2, main = sprintf("PC2 predictive of SZ status (AUC = %s)", round(auc(resROCPC2),3)))
+ci(resROCPC2)
+```
+
+#### Clinical Risk (CR)
+
+Adjusting for MMSE increases prediction of CR.
+
+```{r, message=FALSE}
+cr_mmse_df = merge(cov_mmse_df %>%
+                       select(!group),
+                     sz_cr,
+                     by="bbl_id") %>%
+  filter(group != 'SZ')
+
+
+resROCPC2 = roc(group ~ PC2, data=cr_mmse_df)
+plot(resROCPC2, main = sprintf("PC2 predictive of CR status (AUC = %s)", round(auc(resROCPC2),3)))
+ci(resROCPC2)
+```
 
 
 ### Emotrics-adjusted scores
