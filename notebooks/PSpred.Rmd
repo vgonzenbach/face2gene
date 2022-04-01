@@ -10,7 +10,7 @@ knitr::opts_chunk$set(echo = FALSE,
                       cache = TRUE, 
                       cache.path = 'cache/PSpred/', 
                       fig.path = "figures/PSpred/")
-knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
+# knitr::opts_knit$set(root.dir = rprojroot::find_rstudio_root_file())
 ```
 
 
@@ -26,9 +26,9 @@ library(kableExtra)
 # chop_df = read.csv('data/Chop_merged_wideV_tp1.csv')
 # penn_df = read.csv("data/Penn_merged_wideV.csv")[,-1] %>% filter(group != "?") # 3 observations in '?' group
 # Read in extended data shared on March 2022
-dat = read.csv('data/penn_chop_tp1_f2g_emotrics_passed_clean_030822.csv',
+dat = read.csv('../data/penn_chop_tp1_f2g_emotrics_passed_clean_030822.csv',
                check.names = FALSE) 
-sz_cr = read.csv('data/penn_szcr_chop_tp1_wideV_f2g_030822.csv')
+sz_cr = read.csv('../data/penn_szcr_chop_tp1_wideV_f2g_030822.csv')
 sz_cr = sz_cr[sz_cr$group %in% c('TD', 'SZ', 'CR'), c('bbl_id', 'group')]
 chop_df = dat[dat$group == '22q', ]
 penn_df = dat[dat$group != '22q', ]
