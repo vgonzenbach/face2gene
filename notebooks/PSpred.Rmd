@@ -289,7 +289,7 @@ sig.weight = names(which(cor.mat[4,] < .05))
 
 #### GAF
 
-There were no significant relationships with IQ.
+There were no significant relationships with GAF.
 
 ```{r}
 gaf = c("GAF_C", "GAF_H")
@@ -309,6 +309,30 @@ cor.mat = rbind(res.cor$r[1,],
 rownames(cor.mat) = c('PC1', 'p', 'PC2', 'p')
 cor.mat %>% t() %>% kable(format = 'html') %>%  kable_styling("striped", full_width = TRUE)
 sig.gaf = names(which(cor.mat[4,] < .05))
+```
+
+
+#### MMSE
+
+There were no significant relationships with weight.
+
+```{r}
+weight_df = dat %>% select(case_id, all_of("weight")) 
+
+# Add emotrics to scores data.frame
+weight_df = merge(cov_df, weight_df, by = 'case_id')
+res.cor = psych::corr.test(weight_df[, c("PC1", "PC2")], 
+                           weight_df[, "weight"],
+                           adjust='fdr')
+
+cor.mat = rbind(res.cor$r[1,], 
+                res.cor$p.adj[1,], 
+                res.cor$r[2,], 
+                res.cor$p.adj[2,])
+
+rownames(cor.mat) = c('PC1', 'p', 'PC2', 'p')
+cor.mat %>% t() %>% kable(format = 'html') %>%  kable_styling("striped", full_width = TRUE)
+sig.weight = names(which(cor.mat[4,] < .05))
 ```
 
 #### Pathology
