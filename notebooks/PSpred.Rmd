@@ -234,6 +234,37 @@ sig.iq = names(which(cor.mat[4,] < .05))
 
 #### Height
 
+There were no significant relationships with height.
+
+```{r}
+height_df = dat %>% select(case_id, all_of("height")) 
+
+# Add emotrics to scores data.frame
+height_df$height = sapply(height_df$height,
+                          FUN = function(x) {
+                            x = unlist(strsplit(x, "'"))
+                            ft = as.numeric(x[1]) * 12
+                            inch = as.numeric(x[2])
+                            ft + inch
+                          })
+height_df = merge(cov_df, height_df, by = 'case_id')
+res.cor = psych::corr.test(height_df[, c("PC1", "PC2")], 
+                           height_df[, "height"],
+                           adjust='fdr')
+
+cor.mat = rbind(res.cor$r[1,], 
+                res.cor$p.adj[1,], 
+                res.cor$r[2,], 
+                res.cor$p.adj[2,])
+
+rownames(cor.mat) = c('PC1', 'p', 'PC2', 'p')
+cor.mat %>% t() %>% kable(format = 'html') %>%  kable_styling("striped", full_width = TRUE)
+sig.height = names(which(cor.mat[4,] < .05))
+```
+
+
+#### Weight
+
 There were no significant relationships with IQ.
 
 ```{r}
