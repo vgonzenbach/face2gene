@@ -621,6 +621,18 @@ t.test(ps_td_gafc$GAF_C[ps_td_gafc$group == 'TD'],
 ```
 
 
+#### PS vs TD GAF_H
+
+GAF_H between PS and TD are significantly different.
+
+```{r}
+ps_td_gafh = dat %>% 
+  select(group, GAF_H)
+
+t.test(ps_td_gafh$GAF_H[ps_td_gafh$group == 'TD'],
+       ps_td_gafh$GAF_H[ps_td_gafh$group == 'PS'])
+```
+
 ## 3. Predicting PS status based on 22q-like PC2
 
 ```{r}
