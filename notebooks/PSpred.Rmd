@@ -1,6 +1,6 @@
 ---
 title: "Predicting PS status with 22q characteristics"
-author: "Virgilio Gonzenbach"
+author: "Virgilio Gonzenbach, Joelle Jee"
 date: "`r format(Sys.time(), '%d %B, %Y')`"
 output: 
   html_document:
@@ -52,17 +52,19 @@ seed=42
 set.seed(seed)
 ```
 
-In this analysis, psychosis spectrum (PS) status is predicted based on 22q11.2 deletion syndrome (22q) characteristics.  
+In this analysis, psychosis spectrum (PS) status is predicted based on 22q11.2 deletion syndrome (22q) characteristics. First, PCA is performed on the 22q sample to estimate the relative contributions, i.e. the loadings, of each gestalt score to the axes of greatest variability (PCs) in this group. These loadings are then used to compute "22q-like" factor scores for the TD and PS groups:
 
-- First, PCA is performed on the 22q sample to estimate the relative contributions, i.e. the loadings, of each gestalt score to the axes of greatest variability (PCs) in this group.
+- ROC analysis shows **PC2 alone correctly predicts PS status 66% of the time**. 
 
-- These loadings are then used to compute "22q-like" factor scores for the TD and PS groups: ROC analysis shows **PC2 alone correctly predicts PS status 67.8% of the time**.  
+- Additionally, Bartlett’s test shows that **variance from the schizophrenia (SZ) group differs from that of clinical risk (CR) on PC2**.
 
-- Additionally, Levene’s test shows that **variance from the schizophrenia (SZ) group differs from that of clinical risk (CR) on PC2**.
+- On the 22q sample, PC2 scores were associated with Psychosis Symptoms, Emotrics and MMSE scores, as well as sex and age.
+
+- Prediction of **Schizophrenia Status** remained strong after correcting out-of-sample PC2 scores (i.e. from non-22q groups) by the above covariates. Prediction of **CR status** weakened after correction. 
 
 ## 0. Sample sizes
 
-Total sample sizes in 03/08/22 data (first row) and non-missing data per variable:  
+Total sample sizes in 03/08/22 data and non-missing data per variable:  
 
 ```{r}
 # Get total in extended data
@@ -148,7 +150,11 @@ plot_loadings(resPCA, dim=1)
 plot_loadings(resPCA, dim=2)
 ```
 
-#### Scores and effects
+### Covariate effects on PC2 scores
+
+#### Demographics
+
+There were significant effects of sex and age on PC2 scores. 
 
 ```{r}
 cov_df = data.frame(chop_df[, c("case_id", "sex", "age", "race")], 
@@ -156,8 +162,6 @@ cov_df = data.frame(chop_df[, c("case_id", "sex", "age", "race")],
                     PC2 = resPCA$ind$coord[, 2])
 anova(lm(PC2 ~ sex + age + race, data=cov_df))
 ```
-
-#### Sex
 
 ```{r}
 cov_df %>% 
@@ -171,8 +175,6 @@ cov_df %>%
   ggtitle("22q-like PC scores for 22q sample coded by sex")
 ```
 
-#### Age
-
 ```{r, message=FALSE, warning=FALSE}
 cov_df %>% 
   ggplot(aes(x=age, y=PC2)) + 
@@ -180,178 +182,13 @@ cov_df %>%
   geom_smooth(method='lm')
 ```
 
-#### Emotrics
+The remaining results on this section show effects on PC2 with and without adjusting for sex and age (see 'adj PC2').
 
-PC2 scores were correlated with Brow Height (Left and Right), Marginal Reflex Distance 2 (Left and Right), and Philtrum measurements. 
+#### Diagnosis
 
-```{r}
-emotrics = c('Brow_Height_Right', 'Brow_Height_Left', 'Marginal_Reflex_Distance_1_Right', 'Marginal_Reflex_Distance_1_Left', 'Marginal_Reflex_Distance_2_Right', 'Marginal_Reflex_Distance_2_Left', 'Philtrum')
-emotrics_df = dat %>% select(case_id, all_of(emotrics)) 
+##### Psychosis
 
-# Add emotrics to scores data.frame
-emo_df = merge(cov_df, emotrics_df, by = 'case_id')
-res.cor = psych::corr.test(emo_df[, c("PC1", "PC2")], 
-                       emo_df[, emotrics], 
-                       adjust='fdr')
-
-cor.mat = rbind(res.cor$r[1,], 
-                res.cor$p.adj[1,], 
-                res.cor$r[2,], 
-                res.cor$p.adj[2,])
-
-rownames(cor.mat) = c('PC1', 'p', 'PC2', 'p')
-cor.mat %>% t() %>% kable(format = 'html') %>%  kable_styling("striped", full_width = TRUE)
-sig.emotrics = names(which(cor.mat[4,] < .05))
-```
-
-#### IQ
-
-There were no significant relationships with IQ.
-
-```{r}
-iq = c("VIQ", "PIQ", "FSIQ")
-iq_df = dat %>% select(case_id, all_of(iq)) 
-
-# Add emotrics to scores data.frame
-iq_df = merge(cov_df, iq_df, by = 'case_id')
-res.cor = psych::corr.test(iq_df[, c("PC1", "PC2")], 
-                       iq_df[, iq], 
-                       adjust='fdr')
-
-cor.mat = rbind(res.cor$r[1,], 
-                res.cor$p.adj[1,], 
-                res.cor$r[2,], 
-                res.cor$p.adj[2,])
-
-rownames(cor.mat) = c('PC1', 'p', 'PC2', 'p')
-cor.mat %>% t() %>% kable(format = 'html') %>%  kable_styling("striped", full_width = TRUE)
-sig.iq = names(which(cor.mat[4,] < .05))
-```
-
-#### Height
-
-There were no significant relationships with height.
-
-```{r}
-height_df = dat %>% select(case_id, all_of("height")) 
-
-# Add emotrics to scores data.frame
-height_df$height = sapply(height_df$height,
-                          FUN = function(x) {
-                            x = unlist(strsplit(x, "'"))
-                            ft = as.numeric(x[1]) * 12
-                            inch = as.numeric(x[2])
-                            ft + inch
-                          })
-height_df = merge(cov_df, height_df, by = 'case_id')
-res.cor = psych::corr.test(height_df[, c("PC1", "PC2")], 
-                           height_df[, "height"],
-                           adjust='fdr')
-
-cor.mat = rbind(res.cor$r[1,], 
-                res.cor$p.adj[1,], 
-                res.cor$r[2,], 
-                res.cor$p.adj[2,])
-
-rownames(cor.mat) = c('PC1', 'p', 'PC2', 'p')
-cor.mat %>% t() %>% kable(format = 'html') %>%  kable_styling("striped", full_width = TRUE)
-sig.height = names(which(cor.mat[4,] < .05))
-```
-
-
-#### Weight
-
-There were no significant relationships with weight.
-
-```{r}
-weight_df = dat %>% select(case_id, all_of("weight")) 
-
-# Add emotrics to scores data.frame
-weight_df = merge(cov_df, weight_df, by = 'case_id')
-res.cor = psych::corr.test(weight_df[, c("PC1", "PC2")], 
-                           weight_df[, "weight"],
-                           adjust='fdr')
-
-cor.mat = rbind(res.cor$r[1,], 
-                res.cor$p.adj[1,], 
-                res.cor$r[2,], 
-                res.cor$p.adj[2,])
-
-rownames(cor.mat) = c('PC1', 'p', 'PC2', 'p')
-cor.mat %>% t() %>% kable(format = 'html') %>%  kable_styling("striped", full_width = TRUE)
-sig.weight = names(which(cor.mat[4,] < .05))
-```
-
-
-#### GAF
-
-There were no significant relationships with GAF.
-
-```{r}
-gaf = c("GAF_C", "GAF_H")
-gaf_df = dat %>% select(case_id, all_of(gaf)) 
-
-# Add emotrics to scores data.frame
-gaf_df = merge(cov_df, gaf_df, by = 'case_id')
-res.cor = psych::corr.test(gaf_df[, c("PC1", "PC2")], 
-                       gaf_df[, gaf], 
-                       adjust='fdr')
-
-cor.mat = rbind(res.cor$r[1,], 
-                res.cor$p.adj[1,], 
-                res.cor$r[2,], 
-                res.cor$p.adj[2,])
-
-rownames(cor.mat) = c('PC1', 'p', 'PC2', 'p')
-cor.mat %>% t() %>% kable(format = 'html') %>%  kable_styling("striped", full_width = TRUE)
-sig.gaf = names(which(cor.mat[4,] < .05))
-```
-
-#### MMSE
-
-There were no significant relationships with MMSE.
-
-```{r}
-mmse_df = dat %>% select(case_id, all_of("MMSE")) 
-
-# Add emotrics to scores data.frame
-mmse_df = merge(cov_df, mmse_df, by = 'case_id')
-res.cor = psych::corr.test(mmse_df[, c("PC1", "PC2")], 
-                           mmse_df[, "MMSE"],
-                           adjust='fdr')
-
-cor.mat = rbind(res.cor$r[1,], 
-                res.cor$p.adj[1,], 
-                res.cor$r[2,], 
-                res.cor$p.adj[2,])
-
-rownames(cor.mat) = c('PC1', 'p', 'PC2', 'p')
-cor.mat %>% t() %>% kable(format = 'html') %>%  kable_styling("striped", full_width = TRUE)
-sig.mmse = names(which(cor.mat[4,] < .05))
-```
-
-
-#### Pathology
-
-```{r}
-patho_df = dat[, c("case_id", "DSM Dx", "PS")] 
-
-# Make factors
-patho_df$`DSM Dx` = as.factor(recode(patho_df$`DSM Dx`, `1` = "Yes", `0` = "No"))
-patho_df$PS = as.factor(recode(patho_df$PS, `1` = "Yes", `0` = "No"))
-patho_df = merge(patho_df, cov_df, by="case_id") %>% drop_na()
-
-## Plot DMS Dx
-patho_df %>% 
-  ggplot(aes(x=PC1, y=PC2, color = `DSM Dx`)) + 
-  geom_point() + 
-  geom_point(data = patho_df %>% select(PC1, PC2, `DSM Dx`) %>% 
-               group_by(`DSM Dx`) %>%  
-               summarize_all(mean), 
-             size = 4, shape = 17) + 
-scale_color_manual(values = c("magenta", "gold")) + 
-  ggtitle("22q-like PC scores for 22q sample coded by DSM Dx")
-```
+22q patients with psychotic symptoms had significantly higher PC2 scores than 22q patients without psychosis.
 
 ```{r}
 report.t = function(res.t, x, y){
@@ -370,14 +207,38 @@ report.t = function(res.t, x, y){
 ```
 
 
+```{r}
+patho_df = dat[, c("case_id", "DSM Dx", "PS")] 
+
+# Make factors
+patho_df$`DSM Dx` = as.factor(recode(patho_df$`DSM Dx`, `1` = "Yes", `0` = "No"))
+patho_df$PS = as.factor(recode(patho_df$PS, `1` = "Yes", `0` = "No"))
+patho_df = merge(patho_df, cov_df, by="case_id") %>% drop_na()
+```
+
+###### PC2
+
+```{r, results='asis'}
+x = patho_df$PC2[patho_df$PS == "Yes"]
+y = patho_df$PC2[patho_df$PS == "No"]
+report.t(apa::t_test(x, y), "PS=Yes", "PS=No")
+```
+
+###### adj PC2
+
+```{r, results='asis'}
+adjPC2 = residuals(lm(PC2 ~ sex + age, data=patho_df))
+x = adjPC2[patho_df$PS == "Yes"]
+y = adjPC2[patho_df$PS == "No"]
+report.t(apa::t_test(x, y), "PS=Yes", "PS=No")
+```
 
 ```{r}
 ## Plot PS
-tmp_df = patho_df %>% select(PC1, PC2, PS) %>% drop_na()
-tmp_df %>% 
+patho_df %>% select(PC1, PC2, PS) %>% 
   ggplot(aes(x=PC1, y=PC2, color = PS)) + 
   geom_point() + 
-  geom_point(data = tmp_df %>% 
+  geom_point(data = patho_df %>% 
                select(PC1, PC2, PS) %>% 
                group_by(PS) %>%  
                summarize_all(mean), 
@@ -386,18 +247,218 @@ tmp_df %>%
   ggtitle("22q-like PC scores for 22q sample coded by PS")
 ```
 
-```{r, results='asis'}
-x = patho_df$PC2[patho_df$PS == "Yes"]
-y = patho_df$PC2[patho_df$PS == "No"]
-report.t(apa::t_test(x, y), "PS=Yes", "PS=No")
+##### DSM Diagnosis
+
+```{r, include=FALSE}
+## Plot DMS Dx
+patho_df %>% 
+  ggplot(aes(x=PC1, y=PC2, color = `DSM Dx`)) + 
+  geom_point() + 
+  geom_point(data = patho_df %>% select(PC1, PC2, `DSM Dx`) %>% 
+               group_by(`DSM Dx`) %>%  
+               summarize_all(mean), 
+             size = 4, shape = 17) + 
+scale_color_manual(values = c("magenta", "gold")) + 
+  ggtitle("22q-like PC scores for 22q sample coded by DSM Dx")
 ```
 
+There was no effect of having a confirmed DSM diagnosis on PC2 scores
 
-## 2. Testing for differences in 22q-like factor scores between TD and PS
+###### PC2
 
-For the Penn sample (i.e. PS and TD groups), 2 factor scores are computed using the loadings above as weights in a linear combination of relevant gestalt scores (i.e. those gave hits in the 22q sample).
+```{r, results='asis'}
+x = patho_df$PC2[patho_df$`DSM Dx` == "Yes"]
+y = patho_df$PC2[patho_df$`DSM Dx` == "No"]
+report.t(apa::t_test(x, y), "DSM=Yes", "DSM=No")
+```
 
-Note: any reference to PCs/factor scores below refers to those computed for the Penn sample. 
+###### adj PC2
+
+```{r, results='asis'}
+x = adjPC2[patho_df$`DSM Dx` == "Yes"]
+y = adjPC2[patho_df$`DSM Dx` == "No"]
+report.t(apa::t_test(x, y), "DSM=Yes", "DSM=No")
+```
+
+#### Emotrics
+
+PC2 scores were correlated with Brow Height (Left and Right), Marginal Reflex Distance 2 (Left and Right), and Philtrum measurements. After adjustment, however, all correlations with Emotrics are significant.
+
+```{r}
+emotrics = c('Brow_Height_Right', 'Brow_Height_Left', 'Marginal_Reflex_Distance_1_Right', 'Marginal_Reflex_Distance_1_Left', 'Marginal_Reflex_Distance_2_Right', 'Marginal_Reflex_Distance_2_Left', 'Philtrum')
+emotrics_df = dat %>% select(case_id, all_of(emotrics)) 
+
+# Add emotrics to scores data.frame
+emo_df = merge(cov_df, emotrics_df, by = 'case_id') %>% drop_na()
+res.cor = psych::corr.test(emo_df[, "PC2"],
+                           emo_df[, emotrics], 
+                           adjust='fdr')
+
+cor.mat = rbind(res.cor$r[1,], 
+                res.cor$p.adj[1,])
+
+rownames(cor.mat) = c('PC2', 'p')
+
+emo_df$PC2 = residuals(lm(PC2 ~ sex + age, data=emo_df)) 
+res.cor = psych::corr.test(emo_df[, "PC2"],
+                           emo_df[, emotrics], 
+                           adjust='fdr')
+cor.mat = rbind(cor.mat,
+                res.cor$r[1,], 
+                res.cor$p.adj[1,])
+
+rownames(cor.mat)[3:4] = c('adj PC2', 'p')
+cor.mat %>% t() %>% kable(format = 'html') %>%  kable_styling("striped", full_width = TRUE)
+sig.emotrics = names(which(cor.mat[2,] < .05))
+```
+
+#### IQ
+
+There were no significant relationships with IQ.
+
+```{r}
+iq = c("VIQ", "PIQ", "FSIQ")
+iq_df = dat %>% select(case_id, all_of(iq)) 
+
+# Add emotrics to scores data.frame
+iq_df = merge(cov_df, iq_df, by = 'case_id') %>% drop_na()
+res.cor = psych::corr.test(iq_df[, "PC2"], 
+                       iq_df[, iq], 
+                       adjust='fdr')
+
+cor.mat = rbind(res.cor$r[1,], 
+                res.cor$p.adj[1,])
+
+rownames(cor.mat) = c('PC2', 'p')
+# Adjust scores
+iq_df$PC2 = residuals(lm(PC2 ~ sex + age, data=iq_df)) 
+res.cor = psych::corr.test(iq_df[, "PC2"],
+                           iq_df[, iq], 
+                           adjust='fdr')
+cor.mat = rbind(cor.mat,
+                res.cor$r[1,], 
+                res.cor$p.adj[1,])
+
+rownames(cor.mat)[3:4] = c('adj PC2', 'p')
+cor.mat %>% t() %>% kable(format = 'html') %>%  kable_styling("striped", full_width = TRUE)
+ssig.iq = names(which(cor.mat[4,] < .05))
+```
+
+#### Height
+
+There were no significant relationships with height and weight.
+
+```{r}
+height_df = dat %>% select(case_id, all_of(c("height", "weight")))
+
+# Add emotrics to scores data.frame
+height_df$height = sapply(height_df$height,
+                          FUN = function(x) {
+                            x = unlist(strsplit(x, "'"))
+                            ft = as.numeric(x[1]) * 12
+                            inch = as.numeric(x[2])
+                            ft + inch
+                          })
+height_df = merge(cov_df, height_df, by = 'case_id') %>% drop_na()
+res.cor = psych::corr.test(height_df[, "PC2"], 
+                           height_df[, c("height", "weight")],
+                           adjust='fdr')
+
+cor.mat = rbind(res.cor$r[1,], 
+                res.cor$p.adj[1,])
+
+rownames(cor.mat) = c('PC2', 'p')
+
+height_df$PC2 = 
+
+# Adjust scores
+height_df$PC2 = residuals(lm(PC2 ~ sex + age, data=height_df)) 
+res.cor = psych::corr.test(height_df[, "PC2"],
+                           height_df[, c("height", "weight")], 
+                           adjust='fdr')
+cor.mat = rbind(cor.mat,
+                res.cor$r[1,], 
+                res.cor$p.adj[1,])
+
+rownames(cor.mat)[3:4] = c('adj PC2', 'p')
+
+
+cor.mat %>% t() %>% kable(format = 'html') %>%  kable_styling("striped", full_width = TRUE)
+sig.height = names(which(cor.mat[4,] < .05))
+```
+
+#### GAF
+
+There were no significant relationships with GAF.
+
+```{r}
+gaf = c("GAF_C", "GAF_H")
+gaf_df = dat %>% select(case_id, all_of(gaf)) 
+
+# Add emotrics to scores data.frame
+gaf_df = merge(cov_df, gaf_df, by = 'case_id') %>% drop_na()
+res.cor = psych::corr.test(gaf_df[, "PC2"], 
+                       gaf_df[, gaf], 
+                       adjust='fdr')
+
+cor.mat = rbind(res.cor$r[1,], 
+                res.cor$p.adj[1,])
+
+rownames(cor.mat) = c('PC2', 'p')
+# Adjust PC2
+gaf_df$PC2 = residuals(lm(PC2 ~ sex + age, data=gaf_df))
+res.cor = psych::corr.test(gaf_df[, "PC2"], 
+                       gaf_df[, gaf], 
+                       adjust='fdr')
+cor.mat = rbind(cor.mat,
+                res.cor$r[1,], 
+                res.cor$p.adj[1,])
+
+rownames(cor.mat)[3:4] = c('adj PC2', 'p')
+
+cor.mat %>% t() %>% kable(format = 'html') %>% kable_styling("striped", full_width = TRUE)
+sig.gaf = names(which(cor.mat[4,] < .05))
+```
+
+#### MMSE
+
+There was a significant negative relationship between PC2 and MMSE scores.
+
+```{r}
+mmse_df = dat %>% select(case_id, all_of("MMSE")) 
+
+# Add emotrics to scores data.frame
+mmse_df = merge(cov_df, mmse_df, by = 'case_id') %>% drop_na()
+res.cor = psych::corr.test(mmse_df[, "PC2"], 
+                           mmse_df[, "MMSE"],
+                           adjust='fdr')
+
+cor.mat = rbind(res.cor$r[1], 
+                res.cor$p.adj[1])
+
+rownames(cor.mat) = c('PC2', 'p')
+
+mmse_df$PC2 = residuals(lm(PC2 ~ sex + age, data=mmse_df))
+res.cor = psych::corr.test(mmse_df[, "PC2"], 
+                           mmse_df[, "MMSE"],
+                           adjust='fdr')
+
+cor.mat = rbind(cor.mat,
+                res.cor$r[1], 
+                res.cor$p.adj[1])
+rownames(cor.mat)[3:4] = c('adj PC2', 'p')
+
+cor.mat %>% t() %>% kable(format = 'html') %>%  kable_styling("striped", full_width = TRUE)
+sig.mmse = names(which(cor.mat[4,] < .05))
+```
+
+## 2. Testing for differences between TD and PS
+
+### 22q-like factor scores
+
+For the Penn sample (i.e. PS and TD groups), 2 factor scores are computed using the loadings shown above as weights in a linear combination of the relevant gestalt scores.
+
+**Note:** any reference to PCs/factor scores from this point refers to those computed for the Penn sample. 
 
 ```{r}
 weigh_scores = function(df, coefs){
@@ -426,34 +487,40 @@ weigh_scores2 = function(df, resPCA){
 }
 ```
 
-### PC 1
 
-No significant differences between groups.
 
-```{r}
-scores_df = data.frame(group = penn_df$group)
-scores_df$PC1 = weigh_scores(penn_df[, which(colnames(penn_df) == '22q11.2 deletion syndrome'):ncol(penn_df)],
-                             get_loadings(resPCA, 1))
-# TD = df$group == "TD"
-TD = penn_df$group == 'TD'
-PS = penn_df$group == "PS"
+```{r, include=FALSE, eval=FALSE}
+#### PC 1
+
+#No significant differences between groups.
+
+
 
 res.t.test = t.test(scores_df$PC1[TD], scores_df$PC1[PS])
 names(res.t.test$estimate) = c("mean of TD", "mean of PS")
 res.t.test
 ```
 
-### PC 2
+#### TD vs PS
+
+##### PC2
 
 PC2 shows a difference between TD and PS groups.
 
-```{r}
-scores_df$PC2 = weigh_scores(penn_df[, which(colnames(penn_df) == '22q11.2 deletion syndrome'):ncol(penn_df)],
-                             get_loadings(resPCA, 2))
+```{r, results='asis'}
+scores_df = data.frame(group = penn_df$group)
+scores_df$PC1 = weigh_scores(penn_df[, which(colnames(penn_df) == '22q11.2 deletion syndrome'):ncol(penn_df)],
+                             get_loadings(resPCA, 1))
+# TD = df$group == "TD"
+TD = scores_df$group == 'TD'
+PS = scores_df$group == "PS"
 
-res.t.test = t.test(scores_df$PC2[TD], scores_df$PC2[PS])
-names(res.t.test$estimate) = c("mean of TD", "mean of PS")
-res.t.test
+
+scores_df$PC2 = weigh_scores(penn_df[, which(colnames(penn_df) == '22q11.2 deletion syndrome'):ncol(penn_df)], get_loadings(resPCA, 2))
+
+# bartlett.test(scores_df$PC2, scores_df$group) # Can assume equalvariance
+res.t = apa::t_test(scores_df$PC2[TD], scores_df$PC2[PS], var.equal=TRUE)
+report.t(res.t, "TD", "PS")
 ```
 
 ```{r}
@@ -467,49 +534,132 @@ scores_df %>%
   ggtitle("22q-like PC Scores of Penn sample")
 ```
 
+##### adj PC2
 
-### SZ vs CR
+```{r, results='asis'}
+cov_df = data.frame(scores_df, 
+                    penn_df[, c("case_id", "sex", "age", "race")])
 
-We see a difference in variances on PC2.
+adjPC2 = residuals(lm(PC2 ~ sex + age, data=cov_df))
+res.t = apa::t_test(adjPC2[cov_df$group == "TD"], adjPC2[cov_df$group == "PS"], var.equal=TRUE)
+report.t(res.t, "TD", "PS")
+```
+
+#### TD vs SZ
+
+Differences remain when comparing TD only to SZ. 
+
+##### PC2
+
+```{r, results='asis'}
+sz_df = merge(sz_cr, data.frame(penn_df[, c("bbl_id", "sex", "age")], select(scores_df, !group)), by="bbl_id") %>% filter(group != 'CR') %>% drop_na()
+
+res.t = apa::t_test(sz_df[sz_df$group == "TD", "PC2"], sz_df[sz_df$group == "SZ", "PC2"], var.equal=TRUE)
+report.t(res.t, "TD", "SZ")
+```
+
+There are no variance difference between these two groups.
 
 ```{r}
-ps_td_df = merge(penn_df %>% select(!group), 
-              sz_cr, by='bbl_id')
-ps_td_df = data.frame(group = as.factor(ps_td_df$group),
-                   PC1 = scores_df$PC1, 
-                   PC2 = scores_df$PC2)
+bartlett.test(sz_df$PC2, sz_df$group) # Can assume equal variance
+```
 
-ps_df =  ps_td_df %>% 
-  filter(group != "TD") 
+##### adjPC2
 
-ps_df %>% 
+```{r, results='asis'}
+adjPC2 = residuals(lm(PC2 ~ sex + age, data=sz_df))
+res.t = apa::t_test(adjPC2 [sz_df$group == "TD"], adjPC2 [sz_df$group == "SZ"], var.equal=TRUE)
+report.t(res.t, "TD", "SZ")
+```
+
+There are no variance difference between these two groups.
+
+```{r}
+bartlett.test(adjPC2, sz_df$group) # Can assume equal variance
+```
+
+#### TD vs CR
+
+Comparison of TD with CR shows there are no differences in means
+
+##### PC2
+
+```{r, results='asis'}
+cr_df = merge(sz_cr, data.frame(penn_df[, c("bbl_id", "sex", "age")], select(scores_df, !group)), by="bbl_id") %>% filter(group != 'SZ') %>% drop_na()
+
+
+res.t = apa::t_test(cr_df[cr_df$group == "TD", "PC2"], cr_df[cr_df$group == "CR", "PC2"], var.equal=TRUE)
+report.t(res.t, "TD", "CR")
+```
+
+But there are variance differences. 
+
+```{r}
+bartlett.test(cr_df$PC2, cr_df$group) # Can assume equal variance
+```
+
+
+
+
+##### adjPC2
+
+```{r, results='asis'}
+adjPC2 = residuals(lm(PC2 ~ sex + age, data=cr_df))
+
+res.t = apa::t_test(adjPC2[cr_df$group == "TD"], adjPC2[cr_df$group == "CR"], var.equal=FALSE)
+report.t(res.t, "TD", "SZ")
+```
+
+#### SZ vs CR
+
+##### PC2
+
+No differences in means.
+
+```{r}
+sz_cr_df = merge(sz_cr, data.frame(penn_df[, c("bbl_id", "sex", "age")], select(scores_df, !group)), by="bbl_id") %>% filter(group != 'TD') %>% drop_na()
+```
+
+
+```{r, results='asis'}
+res.t = apa::t_test(sz_cr_df[sz_cr_df$group == "SZ", "PC2"], sz_cr_df[sz_cr_df$group == "CR", "PC2"], var.equal=TRUE)
+report.t(res.t, "SZ", "CR")
+```
+
+But We see a difference in variances on PC2.
+ 
+```{r}
+bartlett.test(sz_cr_df$PC2, sz_cr_df$group)
+```
+
+ 
+```{r}
+sz_cr_df %>% 
   ggplot(aes(x=PC1, y=PC2, color = group)) + 
   geom_point() + 
-  geom_point(data = ps_df %>%  
+  geom_point(data = sz_cr_df %>%  
                group_by(group) %>% 
                summarize_all(mean), 
              size = 4, shape = 17) + 
   scale_color_manual(values = c("orange", "purple"))
 ```
 
-#### PC2: T-test
+##### adjPC2
 
+Results remain after adjustment. 
+
+```{r, results='asis'}
+adjPC2 = residuals(lm(PC2 ~ sex + age, data=sz_cr_df))
+res.t = apa::t_test(adjPC2[sz_cr_df$group == "SZ"], adjPC2[sz_cr_df$group == "CR"], var.equal=TRUE)
+report.t(res.t, "SZ", "CR")
+```
+ 
 ```{r}
-SZ = ps_td_df$group=="SZ"
-CR = ps_td_df$group=="CR"
-
-res.t.test = t.test(scores_df$PC2[SZ], scores_df$PC2[CR])
-names(res.t.test$estimate) = c("mean of SZ", "mean of CR")
-res.t.test
+bartlett.test(adjPC2, sz_cr_df$group)
 ```
 
-#### PC2: Levene's test
 
-```{r}
-car::leveneTest(ps_df$PC2, ps_df$group)
-```
-
-#### Emotrics
+### Emotrics
 
 ```{r}
 # Order emotrics 
@@ -545,7 +695,7 @@ For univariate t-tests, the only difference between groups was in Philtrum measu
 report.t.list(res.t)
 ```
 
-#### GAF_C
+### GAF_C
 
 GAF_C **are** significantly different between PS and TD.
 
@@ -558,7 +708,7 @@ apa::t_test(ps_td_gafc$GAF_C[ps_td_gafc$group == 'TD'],
 ```
 
 
-#### GAF_H
+### GAF_H
 
 GAF_H **are** significantly different between PS and TD.
 
@@ -570,7 +720,7 @@ apa::t_test(ps_td_gafh$GAF_H[ps_td_gafh$group == 'TD'],
        ps_td_gafh$GAF_H[ps_td_gafh$group == 'PS'], var.equal=TRUE) %>% report.t('TD', 'PS')
 ```
 
-#### Height
+### Height
 
 No significant difference.
 
@@ -589,7 +739,7 @@ apa::t_test(ps_td_height$height[ps_td_height$group == 'TD'],
        ps_td_height$height[ps_td_height$group == 'PS'], var.equal=TRUE) %>% report.t(x='TD', y='PS')
 ```
 
-#### Weight
+### Weight
 
 No significant difference.
 
@@ -602,7 +752,7 @@ apa::t_test(ps_td_weight$weight[ps_td_weight$group == 'TD'],
 ```
 
 
-#### MMSE
+### MMSE
 
 No significant difference.
 
@@ -639,45 +789,38 @@ plotROCs = function(roc1, roc2, roc3, main, legends){
 ```
 
 ```{r, message=FALSE, results='asis'}
-resROCPC2_ps = roc(group ~ PC2, data=scores_df)
+resROC_main_ps = roc(group ~ PC2, data=scores_df)
 
-sz_df = data.frame(group = as.character(ps_td_df$group), 
-                   PC2 = ps_td_df$PC2) %>% filter(group != 'CR')
+resROC_main_sz = roc(group ~ PC2, data=sz_df)
 
-resROCPC2_sz = roc(group ~ PC2, data=sz_df)
-
-cr_df = data.frame(group = as.character(ps_td_df$group), 
-                   PC2 = ps_td_df$PC2) %>% 
-  filter(group != 'SZ')
-
-resROCPC2_cr = roc(group ~ PC2, data=cr_df)
+resROC_main_cr = roc(group ~ PC2, data=cr_df)
 
 legends = c('PS', 'SZ', 'CR')
-plotROCs(resROCPC2_ps, resROCPC2_sz, resROCPC2_cr, main = 'ROC Curves of PC2 predicting Status (AUC)', legends =  legends)
+plotROCs(resROC_main_ps, resROC_main_sz, resROC_main_cr, main = 'ROC Curves of PC2 predicting Status (AUC)', legends =  legends)
 ```
 
 #### Psychosis Status
 
 ```{r, results='asis'}
-ci(resROCPC2_ps)
+ci(resROC_main_ps)
 ```
 
 #### Schizophrenia Status 
 
 ```{r, results='asis', }
-ci(resROCPC2_sz)
+ci(resROC_main_sz)
 ```
 
 #### Clinical Risk Status
 
 ```{r, results='asis'}
-ci(resROCPC2_cr)
+ci(resROC_main_cr)
 ```
 
 
 ## 4. Predicting PS status based on adjusted PC2 
 
-### Sex- and -age adjustment
+### Sex and age adjustment
 
 Prediction strength for PS status drops slightly after adjustment. However, prediction of CR status becomes essentially random (see CI).
 
@@ -686,7 +829,7 @@ cov_df = data.frame(scores_df,
                     penn_df[, c("case_id", "sex", "age", "race")]) %>%
   drop_na()
 cov_df$PC2 = residuals(lm(PC2 ~ sex + age, data=cov_df))
-resROCPC2_ps = roc(group ~ PC2, data=cov_df)
+resROC_ps = roc(group ~ PC2, data=cov_df)
 
 sz_cr_df = data.frame(bbl_id = penn_df$bbl_id,
                    group = penn_df$group,
@@ -700,31 +843,31 @@ sz_cr_df = merge(sz_cr, sz_cr_df %>% select(!group),
 sz_df = sz_cr_df %>%
   filter(group != 'CR')
 
-resROCPC2_sz = roc(group ~ PC2, data=sz_df)
+resROC_sz = roc(group ~ PC2, data=sz_df)
 
 cr_df = sz_cr_df %>%
   filter(group != 'SZ')
 
-resROCPC2_cr = roc(group ~ PC2, data=cr_df)
-plotROCs(resROCPC2_ps, resROCPC2_sz, resROCPC2_cr, main = 'ROC Curves of PC2 predicting Status (AUC)',legends =  legends)
+resROC_cr = roc(group ~ PC2, data=cr_df)
+plotROCs(resROC_ps, resROC_sz, resROC_cr, main = 'ROC Curves of PC2 predicting Status (AUC)',legends =  legends)
 ```
 
 #### Psychosis Status
 
 ```{r, results='asis'}
-ci(resROCPC2_ps)
+ci(resROC_ps)
 ```
 
 #### Schizophrenia Status 
 
 ```{r, results='asis', }
-ci(resROCPC2_sz)
+ci(resROC_sz)
 ```
 
 #### Clinical Risk Status
 
 ```{r, results='asis'}
-ci(resROCPC2_cr)
+ci(resROC_cr)
 ```
 
 ### Emotrics-adjusted scores
@@ -736,157 +879,53 @@ emo_df$PC2 = residuals(lm(formula(sprintf("%s ~ %s",
                                           "PC2", 
                                           paste(sig.emotrics, collapse=" + "))), 
                           data=emo_df))
-resROCPC2_ps = roc(group ~ PC2, data=emo_df)
+resROC_ps = roc(group ~ PC2, data=emo_df)
 
 sz_df = merge(sz_cr, 
               emo_df[,c("bbl_id", "PC2")]) %>% 
   filter(group != 'CR')
-resROCPC2_sz = roc(group ~ PC2, data=sz_df)
+resROC_sz = roc(group ~ PC2, data=sz_df)
 
 cr_df = merge(sz_cr, 
               emo_df[,c("bbl_id", "PC2")]) %>% 
   filter(group != 'SZ')
-resROCPC2_cr = roc(group ~ PC2, data=cr_df)
-plotROCs(resROCPC2_ps, resROCPC2_sz, resROCPC2_cr, main = 'ROC Curves of PC2 predicting Status (AUC)',legends =  legends)
+resROC_cr = roc(group ~ PC2, data=cr_df)
+plotROCs(resROC_ps, resROC_sz, resROC_cr, main = 'ROC Curves of PC2 predicting Status (AUC)',legends =  legends)
 ```
 
 #### Psychosis Status
 
 ```{r, results='asis'}
-ci(resROCPC2_ps)
+ci(resROC_ps)
 ```
 
 #### Schizophrenia Status 
 
 ```{r, results='asis', }
-ci(resROCPC2_sz)
+ci(resROC_sz)
 ```
 
 #### Clinical Risk Status
 
 ```{r, results='asis'}
-ci(resROCPC2_cr)
+ci(resROC_cr)
 ```
 
-### Height adjustment
+### High missingness drops AUC
 
-```{r}
-t(n_tbl["height",]) %>% kable(format="html") %>% kable_styling("striped", full_width = TRUE)
-```
+#### GAF_C
 
-Prediction strength for PS status doesn't really change after adjusting for height. Adjusting for height increases prediction of SZ.
-
-```{r, message=FALSE}
-cov_height_df = data.frame(scores_df, 
-                    penn_df[, c("case_id", "bbl_id", "height")]) %>%
-  drop_na()
-cov_height_df$PC2 = residuals(lm(PC2 ~ height, data=cov_height_df))
-resROCPC2_ps = roc(group ~ PC2, data=cov_height_df)
-
-sz_height_df = merge(cov_height_df %>%
-                       select(!group),
-                     sz_cr,
-                     by="bbl_id") %>%
-  filter(group != 'CR')
-
-resROCPC2_sz = roc(group ~ PC2, data=sz_height_df)
-
-cr_height_df = merge(cov_height_df %>%
-                       select(!group),
-                     sz_cr,
-                     by="bbl_id") %>%
-  filter(group != 'SZ')
-
-
-resROCPC2_cr = roc(group ~ PC2, data=cr_height_df)
-
-plotROCs(resROCPC2_ps, resROCPC2_sz, resROCPC2_cr, main = 'ROC Curves of PC2 predicting Status (AUC)',legends =  legends)
-```
-
-#### Psychosis Status
-
-```{r, results='asis'}
-ci(resROCPC2_ps)
-```
-
-#### Schizophrenia Status 
-
-```{r, results='asis', }
-ci(resROCPC2_sz)
-```
-
-#### Clinical Risk Status
-
-```{r, results='asis'}
-ci(resROCPC2_cr)
-```
-
-### Weight adjustment
-
-```{r}
-t(n_tbl["weight",]) %>% kable(format="html") %>% kable_styling("striped", full_width = TRUE)
-```
-
-Prediction strength for PS status drops slightly after adjusting for weight. Adjusting for weight decreases prediction of SZ.
-
-```{r, message=FALSE}
-cov_weight_df = data.frame(scores_df, 
-                    penn_df[, c("case_id", "bbl_id", "weight")]) %>%
-  drop_na()
-cov_weight_df$PC2 = residuals(lm(PC2 ~ weight, data=cov_weight_df))
-resROCPC2 = roc(group ~ PC2, data=cov_weight_df)
-
-sz_weight_df = merge(cov_weight_df %>%
-                       select(!group),
-                     sz_cr,
-                     by="bbl_id") %>%
-  filter(group != 'CR')
-
-resROCPC2 = roc(group ~ PC2, data=sz_weight_df)
-
-cr_weight_df = merge(cov_weight_df %>%
-                       select(!group),
-                     sz_cr,
-                     by="bbl_id") %>%
-  filter(group != 'SZ')
-
-
-resROCPC2 = roc(group ~ PC2, data=cr_weight_df)
-plotROCs(resROCPC2_ps, resROCPC2_sz, resROCPC2_cr, main = 'PC2 predicting PS status',legends =  legends)
-```
-
-#### Psychosis Status
-
-```{r, results='asis'}
-ci(resROCPC2_ps)
-```
-
-#### Schizophrenia Status 
-
-```{r, results='asis'}
-ci(resROCPC2_sz)
-```
-
-#### Clinical Risk Status
-
-```{r, results='asis'}
-ci(resROCPC2_cr)
-```
-
-### GAF_C adjustment
+Excluding observations with missing data on GAF_C, drops AUC to random levels (i.e. CI includes .50) pointing to insufficient data. No adjustment was applied to PC2 scores.
 
 ```{r}
 t(n_tbl["GAF_C",]) %>% kable(format="html") %>% kable_styling("striped", full_width = TRUE)
 ```
 
-Prediction strength for PS status decreases after adjusting for GAF_C. Adjusting for GAF_C decreases prediction of SZ. Adjusting for GAF_C increases prediction of CR.
-
 ```{r, message=FALSE}
 cov_gafc_df = data.frame(scores_df, 
-                    penn_df[, c("case_id", "bbl_id", "GAF_C")]) %>%
-  drop_na()
-cov_gafc_df$PC2 = residuals(lm(PC2 ~ GAF_C, data=cov_gafc_df))
-resROCPC2_ps = roc(group ~ PC2, data=cov_gafc_df)
+                    penn_df[, c("case_id", "bbl_id", "GAF_C")]) %>% drop_na()
+#cov_gafc_df$PC2 = residuals(lm(PC2 ~ GAF_C, data=cov_gafc_df))
+resROC_ps = roc(group ~ PC2, data=cov_gafc_df)
 
 sz_gafc_df = merge(cov_gafc_df %>%
                        select(!group),
@@ -894,7 +933,7 @@ sz_gafc_df = merge(cov_gafc_df %>%
                      by="bbl_id") %>%
   filter(group != 'CR')
 
-resROCPC2_sz = roc(group ~ PC2, data=sz_gafc_df)
+resROC_sz = roc(group ~ PC2, data=sz_gafc_df)
 
 cr_gafc_df = merge(cov_gafc_df %>%
                        select(!group),
@@ -903,42 +942,41 @@ cr_gafc_df = merge(cov_gafc_df %>%
   filter(group != 'SZ')
 
 
-resROCPC2_cr = roc(group ~ PC2, data=cr_gafc_df)
-plotROCs(resROCPC2_ps, resROCPC2_sz, resROCPC2_cr, main = 'ROC Curves of PC2 predicting Status (AUC)',legends =  legends)
+resROC_cr = roc(group ~ PC2, data=cr_gafc_df)
+plotROCs(resROC_ps, resROC_sz, resROC_cr, main = 'ROC Curves of PC2 predicting Status (AUC)',legends =  legends)
 ```
 
-#### Psychosis Status
+##### Psychosis Status
 
 ```{r, results='asis'}
-ci(resROCPC2_ps)
+ci(resROC_ps)
 ```
 
-#### Schizophrenia Status 
+##### Schizophrenia Status 
 
 ```{r, results='asis', }
-ci(resROCPC2_sz)
+ci(resROC_sz)
 ```
 
-#### Clinical Risk Status
+##### Clinical Risk Status
 
 ```{r, results='asis'}
-ci(resROCPC2_cr)
+ci(resROC_cr)
 ```
 
-### GAF_H adjustment
+#### GAF_H
 
+Excluding observations with missing data on GAF_H, drops AUC. No adjustment was applied to PC2 scores.
 ```{r}
 t(n_tbl["GAF_C",]) %>% kable(format="html") %>% kable_styling("striped", full_width = TRUE)
 ```
 
-Prediction strength for PS status decreases after adjusting for GAF_H. Adjusting for GAF_H decreases prediction of SZ. Adjusting for GAF_H increases prediction of CR.
 
 ```{r, message=FALSE}
 cov_gafh_df = data.frame(scores_df, 
-                    penn_df[, c("case_id", "bbl_id", "GAF_H")]) %>%
-  drop_na()
-cov_gafh_df$PC2 = residuals(lm(PC2 ~ GAF_H, data=cov_gafh_df))
-resROCPC2_ps = roc(group ~ PC2, data=cov_gafh_df)
+                    penn_df[, c("case_id", "bbl_id", "GAF_H")])  %>% drop_na()
+#cov_gafh_df$PC2 = residuals(lm(PC2 ~ GAF_H, data=cov_gafh_df))
+resROC_ps = roc(group ~ PC2, data=cov_gafh_df)
 
 sz_gafh_df = merge(cov_gafh_df %>%
                        select(!group),
@@ -946,7 +984,7 @@ sz_gafh_df = merge(cov_gafh_df %>%
                      by="bbl_id") %>%
   filter(group != 'CR')
 
-resROCPC2_sz = roc(group ~ PC2, data=sz_gafh_df)
+resROC_sz = roc(group ~ PC2, data=sz_gafh_df)
 
 cr_gafh_df = merge(cov_gafh_df %>%
                        select(!group),
@@ -955,42 +993,43 @@ cr_gafh_df = merge(cov_gafh_df %>%
   filter(group != 'SZ')
 
 
-resROCPC2_cr = roc(group ~ PC2, data=cr_gafh_df)
-plotROCs(resROCPC2_ps, resROCPC2_sz, resROCPC2_cr, main = 'ROC Curves of PC2 predicting Status (AUC)',legends =  legends)
+resROC_cr = roc(group ~ PC2, data=cr_gafh_df)
+plotROCs(resROC_ps, resROC_sz, resROC_cr, main = 'ROC Curves of PC2 predicting Status (AUC)',legends =  legends)
 ```
 
-#### Psychosis Status
+##### Psychosis Status
 
 ```{r, results='asis'}
-ci(resROCPC2_ps)
+ci(resROC_ps)
 ```
 
-#### Schizophrenia Status 
+##### Schizophrenia Status 
 
 ```{r, results='asis', }
-ci(resROCPC2_sz)
+ci(resROC_sz)
 ```
 
-#### Clinical Risk Status
+##### Clinical Risk Status
 
 ```{r, results='asis'}
-ci(resROCPC2_cr)
+ci(resROC_cr)
 ```
 
-### MMSE adjustment
+#### MMSE
+
+Excludding observations with missing data on MMSE. No adjustment was applied to PC2 scores.
 
 ```{r}
 t(n_tbl["MMSE",]) %>% kable(format="html") %>% kable_styling("striped", full_width = TRUE)
 ```
 
-Prediction strength for PS status decreases after adjusting for MMSe. Adjusting for MMSE decreases prediction of SZ. Adjusting for MMSE increases prediction of CR.
-
 ```{r, message=FALSE}
 cov_mmse_df = data.frame(scores_df, 
                     penn_df[, c("case_id", "bbl_id", "MMSE")]) %>%
   drop_na()
-cov_mmse_df$PC2 = residuals(lm(PC2 ~ MMSE, data=cov_mmse_df))
-resROCPC2_ps = roc(group ~ PC2, data=cov_mmse_df)
+
+resROC_ps = roc(group ~ PC2, data=cov_mmse_df)
+#cov_mmse_df$PC2 = residuals(lm(PC2 ~ MMSE, data=cov_mmse_df))
 
 sz_mmse_df = merge(cov_mmse_df %>%
                        select(!group),
@@ -998,7 +1037,7 @@ sz_mmse_df = merge(cov_mmse_df %>%
                      by="bbl_id") %>%
   filter(group != 'CR')
 
-resROCPC2_sz = roc(group ~ PC2, data=sz_mmse_df)
+resROC_sz = roc(group ~ PC2, data=sz_mmse_df)
 
 cr_mmse_df = merge(cov_mmse_df %>%
                        select(!group),
@@ -1007,30 +1046,31 @@ cr_mmse_df = merge(cov_mmse_df %>%
   filter(group != 'SZ')
 
 
-resROCPC2_cr = roc(group ~ PC2, data=cr_mmse_df)
-plotROCs(resROCPC2_ps, resROCPC2_sz, resROCPC2_cr, main = 'ROC Curves of PC2 predicting Status (AUC)',legends =  legends)
+resROC_cr = roc(group ~ PC2, data=cr_mmse_df)
+plotROCs(resROC_ps, resROC_sz, resROC_cr, main = 'ROC Curves of PC2 predicting Status (AUC)',legends =  legends)
 ```
 
-#### Psychosis Status
+##### Psychosis Status
 
 ```{r, results='asis'}
-ci(resROCPC2_ps)
+ci(resROC_ps)
 ```
 
-#### Schizophrenia Status 
+##### Schizophrenia Status 
 
 ```{r, results='asis', }
-ci(resROCPC2_sz)
+ci(resROC_sz)
 ```
 
-#### Clinical Risk Status
+##### Clinical Risk Status
 
 ```{r, results='asis'}
-ci(resROCPC2_cr)
+ci(resROC_cr)
 ```
 
 ## Conclusion
 
-- PC2 alone is predictive of PS status with an AUC of `r round(pROC::auc(resROCPC2), 3)`!
+- PC2 alone is predictive of PS status with an AUC of `r round(pROC::auc(resROC_main_ps), 3)`!
 - There are variance differences on PC2 between PS groups (SZ vs CR).
+- By examining scores from 22q sample, PC2 can be interpreted as showing an association with Psychosis Symptoms, Face measurements, and MMSE scores, with age and sex effects.
 - After adjustments, Schizophrenia (SZ) status remains well-predicted while Clinical Risk (CR) status does not.
