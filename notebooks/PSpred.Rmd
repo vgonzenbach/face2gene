@@ -286,8 +286,11 @@ PC2 scores were correlated with Brow Height (Left and Right), Marginal Reflex Di
 
 ```{r}
 emotrics = c('Brow_Height_Right', 'Brow_Height_Left', 'Marginal_Reflex_Distance_1_Right', 'Marginal_Reflex_Distance_1_Left', 'Marginal_Reflex_Distance_2_Right', 'Marginal_Reflex_Distance_2_Left', 'Philtrum')
-emotrics_df = dat %>% select(case_id, all_of(emotrics)) 
 
+emotrics_df = dat %>% select(bbl_id, case_id, all_of(emotrics)) %>% mutate(Brow_Height = (Brow_Height_Right + Brow_Height_Left) / 2, Marginal_Reflex_Distance_1 = (Marginal_Reflex_Distance_1_Left + Marginal_Reflex_Distance_1_Right) /2, Marginal_Reflex_Distance_2 = (Marginal_Reflex_Distance_2_Right + Marginal_Reflex_Distance_2_Left)/2) %>% select(-ends_with('Left'), -ends_with('Right'))
+
+emotrics = colnames(emotrics_df)[-c(1:2)]
+  
 # Add emotrics to scores data.frame
 emo_df = merge(cov_df, emotrics_df, by = 'case_id') %>% drop_na()
 res.cor = psych::corr.test(emo_df[, "PC2"],
@@ -617,7 +620,7 @@ report.t(res.t, "TD", "SZ")
 No differences in means.
 
 ```{r}
-sz_cr_df = merge(sz_cr, data.frame(penn_df[, c("bbl_id", "sex", "age")], select(scores_df, !group)), by="bbl_id") %>% filter(group != 'TD') %>% drop_na()
+sz_cr_df = merge(sz_cr, data.frame(penn_df[, c("bbl_id", "sex", "age")], select(scores_df, !group), by="bbl_id")) %>% filter(group != 'TD') %>% drop_na()
 ```
 
 
@@ -663,12 +666,14 @@ bartlett.test(adjPC2, sz_cr_df$group)
 
 ```{r}
 # Order emotrics 
-emo_df = merge(data.frame(case_id = penn_df$case_id, 
-                          bbl_id = penn_df$bbl_id,
+emo_df = merge(data.frame(case_id = penn_df$case_id,
                           scores_df), 
                emotrics_df, 
                by='case_id')
 # emo_df %>%  select(all_of(emotrics)) %>% lapply(bartlett.test, g=emo_df$group) # All variances are equal after adj
+
+
+
 res.t = emo_df %>% 
   select(all_of(emotrics)) %>% 
   lapply(function(x) apa::t_test(x[emo_df$group == 'PS'], x[emo_df$group == 'TD'], 
@@ -689,7 +694,7 @@ report.t.list = function(res.t){
 }
 ```
 
-For univariate t-tests, the only difference between groups was in Philtrum measurements:  
+For univariate t-tests, the only difference between groups was in Philtrum measurements and Marginal Reflex Distance 1:  
 
 ```{r, results='asis'}
 report.t.list(res.t)
@@ -882,12 +887,12 @@ emo_df$PC2 = residuals(lm(formula(sprintf("%s ~ %s",
 resROC_ps = roc(group ~ PC2, data=emo_df)
 
 sz_df = merge(sz_cr, 
-              emo_df[,c("bbl_id", "PC2")]) %>% 
+              emo_df[,c("bbl_id", "PC2", emotrics)],) %>% 
   filter(group != 'CR')
 resROC_sz = roc(group ~ PC2, data=sz_df)
 
 cr_df = merge(sz_cr, 
-              emo_df[,c("bbl_id", "PC2")]) %>% 
+              emo_df[,c("bbl_id", "PC2", emotrics)]) %>% 
   filter(group != 'SZ')
 resROC_cr = roc(group ~ PC2, data=cr_df)
 plotROCs(resROC_ps, resROC_sz, resROC_cr, main = 'ROC Curves of PC2 predicting Status (AUC)',legends =  legends)
