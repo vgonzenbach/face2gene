@@ -620,7 +620,7 @@ report.t(res.t, "TD", "SZ")
 No differences in means.
 
 ```{r}
-sz_cr_df = merge(sz_cr, data.frame(penn_df[, c("bbl_id", "sex", "age")], select(scores_df, !group), by="bbl_id")) %>% filter(group != 'TD') %>% drop_na()
+sz_cr_df = merge(sz_cr, data.frame(penn_df[, c("bbl_id", "sex", "age")], select(scores_df, !group)), by="bbl_id") %>% filter(group != 'TD') %>% drop_na()
 ```
 
 
@@ -679,14 +679,16 @@ res.t = emo_df %>%
   lapply(function(x) apa::t_test(x[emo_df$group == 'PS'], x[emo_df$group == 'TD'], 
                                  var.equal=TRUE))
 
-report.t.list = function(res.t){
+report.t.list = function(res.t, x, y){
   #' Report t-test in apa format
   #'' TODO: to fully automate: print groups from data.name, bonus: add formatting/substutions of var.name as parameter
     for(dep.var in names(res.t)){
       
-        cat(sprintf("- %s: PS (*M* = %s, *SD* = %s) and TD (*M* = %s, *SD* = %s), %s", 
+        cat(sprintf("- %s: %s (*M* = %s, *SD* = %s) and %s (*M* = %s, *SD* = %s), %s", 
                 gsub("Right", "(R)", gsub("Left", "(L)", gsub("_", " ", dep.var))),
+                x,
                 round(mean(res.t[[dep.var]]$data$x), 2), round(sd(res.t[[dep.var]]$data$x), 2),
+                y,
                 round(mean(res.t[[dep.var]]$data$y), 2), round(sd(res.t[[dep.var]]$data$y), 2),
                 apa::apa(res.t[[dep.var]], print = FALSE)), 
             sep="\n")
@@ -694,10 +696,56 @@ report.t.list = function(res.t){
 }
 ```
 
-For univariate t-tests, the only difference between groups was in Philtrum measurements and Marginal Reflex Distance 1:  
+#### PS vs TD
+
+For PS vs TD, there were difference between groups were in Philtrum measurements and Marginal Reflex Distance 1:  
 
 ```{r, results='asis'}
-report.t.list(res.t)
+report.t.list(res.t, 'PS', 'TD')
+```
+
+#### SZ vs TD
+
+There were differences between SZ and Td in Marginal Reflex Distance 1 but not in Philtrum measurements.
+
+```{r, results='asis'}
+sz_df = merge(sz_df, emotrics_df, by='bbl_id')
+
+res.t = sz_df %>% 
+  select(all_of(emotrics)) %>% 
+  lapply(function(x) apa::t_test(x[sz_df$group == 'SZ'], x[sz_df$group == 'TD'], 
+                                 var.equal=TRUE))
+
+report.t.list(res.t, 'SZ', 'TD')
+```
+
+#### CR vs TD
+
+There are differences in Philtrum and Marginal Reflex Distance 1, suggesting CR drives the PS vs TD differences in these two variables.
+
+```{r, results='asis'}
+cr_df = merge(cr_df, emotrics_df, by='bbl_id')
+
+res.t = cr_df %>% 
+  select(all_of(emotrics)) %>% 
+  lapply(function(x) apa::t_test(x[cr_df$group == 'CR'], x[cr_df$group == 'TD'], 
+                                 var.equal=TRUE))
+
+report.t.list(res.t, 'CR', 'TD')
+```
+
+#### SZ vs CR
+
+There were Philtrum differences between these two groups.
+
+```{r, results='asis'}
+sz_cr_df = merge(sz_cr_df, emotrics_df, by='bbl_id')
+res.t = sz_cr_df %>% 
+  select(all_of(emotrics)) %>% 
+  lapply(function(x) apa::t_test(x[sz_cr_df$group == 'SZ'], x[sz_cr_df$group == 'CR'], 
+                                 var.equal=TRUE))
+
+report.t.list(res.t, 'SZ', 'CR')
 ```
 
 ### GAF_C
@@ -769,7 +817,7 @@ apa::t_test(ps_td_mmse$MMSE[ps_td_mmse$group == 'TD'],
        ps_td_mmse$MMSE[ps_td_mmse$group == 'PS'], var.equal=TRUE) %>% report.t('TD', 'PS')
 ```
 
-## 3. Predicting PS status based on 22q-like PC2
+## 3a. Predicting PS status based on 22q-like PC2
 
 ```{r}
 plotROCs = function(roc1, roc2, roc3, main, legends){
@@ -824,29 +872,38 @@ ci(resROC_main_cr)
 
 ## 3b. Predicting PS status based on Emotrics
 
-Prediction by the 4 (aggregated) Emotrics variables is significant for PS and SZ status. Relative to prediction by PC2, prediction by emotrics is a slightly weaker -- though confidence intervals overlap.
+Prediction by the 4 (aggregated) Emotrics variables is significant for every status. Relative to prediction by PC2, prediction of SZ by emotrics is slightly weaker but CR prediction has improved. 
 
 ```{r, message=FALSE, results='asis'}
 
-loo.log = function(df){ # Leave one out logistic regression with emotrics as predictor
+loo.log = function(df, predictors = emotrics){ # Leave one out logistic regression with emotrics as predictor
   df$group = as.numeric(df$group != 'TD')
-  frmla = as.formula(sprintf("group ~ %s", paste(emotrics, collapse=" + ")))
-  reslog = c()
+  frmla = as.formula(sprintf("group ~ %s", paste(predictors, collapse=" + ")))
+  
+  preds = c()
   for (i in 1:nrow(df)){ ## Leave one out CV
-    tmp_df = df[-i,]
-    reslog[i] = glm(frmla, family='binomial', data=tmp_df)$fitted.values
+      train_df <- df[-i, ]
+      test_df <- df[i, ]
+      glm.fit <- glm(frmla, family='binomial', data=train_df)
+      preds[i] <- predict(glm.fit, test_df)
+    # res = train(form = frmla, data = df,
+    #       trControl = trainControl(method = "LOOCV"),
+    #       method = "glm", family = "binomial")
+    # tmp_df = df[-i,]
+    # glm(frmla, family='binomial', data=tmp_df)$fitted.values
   }
-  return(reslog)
+  return(preds)
 }
 
 emo_df$reslog = loo.log(emo_df)
 resROC_main_ps = roc(group ~ reslog, data=emo_df)
 
-sz_df = merge(sz_df, emotrics_df, by='bbl_id')
-sz_df$reslog = loo.log(sz_df)
+#sz_df = merge(sz_df, emotrics_df, by='bbl_id')
+#cr_df = merge(cr_df, emotrics_df, by='bbl_id')
+sz_df$reslog = loo.log(sz_df)# loo.log(sz_df)
 resROC_main_sz = roc(group ~ reslog, data=sz_df)
 
-cr_df = merge(cr_df, emotrics_df, by='bbl_id')
+
 cr_df$reslog = loo.log(cr_df)
 resROC_main_cr = roc(group ~ reslog, data=cr_df)
 
@@ -872,9 +929,49 @@ ci(resROC_main_sz)
 ci(resROC_main_cr)
 ```
 
+## 3c. Predicting PS status with 22q-like PC2 and emotrics
+
+By combining the two types of features, the predictive models are largely improved!
+
+```{r, message=FALSE, results='asis'}
+emo_df$reslog = loo.log(emo_df, predictors = c(emotrics, "PC2"))
+resROC_main_ps = roc(group ~ reslog, data=emo_df)
+
+#sz_df = merge(sz_df, emotrics_df, by='bbl_id')
+#cr_df = merge(cr_df, emotrics_df, by='bbl_id')
+sz_df$reslog = loo.log(sz_df, predictors = c(emotrics, "PC2"))# loo.log(sz_df)
+resROC_main_sz = roc(group ~ reslog, data=sz_df)
+
+
+cr_df$reslog = loo.log(cr_df, predictors = c(emotrics, "PC2"))
+resROC_main_cr = roc(group ~ reslog, data=cr_df)
+
+legends = c('PS', 'SZ', 'CR')
+plotROCs(resROC_main_ps, resROC_main_sz, resROC_main_cr, main = 'ROC Curves of Emotrics and PC2 predicting Status (AUC)', legends =  legends)
+```
+
+#### Psychosis Status
+
+```{r, results='asis'}
+ci(resROC_main_ps)
+```
+
+#### Schizophrenia Status 
+
+```{r, results='asis', }
+ci(resROC_main_sz)
+```
+
+#### Clinical Risk Status
+
+```{r, results='asis'}
+ci(resROC_main_cr)
+```
+
+
 ## 4. Predicting PS status based on adjusted PC2 
 
-### Sex and age adjustment
+### PC2 Sex and age adjustment
 
 Prediction strength for PS status drops slightly after adjustment. However, prediction of CR status becomes essentially random (see CI).
 
@@ -882,6 +979,7 @@ Prediction strength for PS status drops slightly after adjustment. However, pred
 cov_df = data.frame(scores_df, 
                     penn_df[, c("case_id", "sex", "age", "race")]) %>%
   drop_na()
+
 cov_df$PC2 = residuals(lm(PC2 ~ sex + age, data=cov_df))
 resROC_ps = roc(group ~ PC2, data=cov_df)
 
@@ -924,7 +1022,7 @@ ci(resROC_sz)
 ci(resROC_cr)
 ```
 
-### Emotrics-adjusted scores
+### PC2 Emotrics-adjusted scores
 
 After adjusting PC2 for emotrics, prediction of SZ-status remains strong while CR becomes random.
 
