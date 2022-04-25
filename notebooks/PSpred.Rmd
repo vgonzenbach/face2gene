@@ -822,6 +822,55 @@ ci(resROC_main_sz)
 ci(resROC_main_cr)
 ```
 
+## 3b. Predicting PS status based on Emotrics
+
+Prediction by the 4 (aggregated) Emotrics variables is significant for PS and SZ status. Relative to prediction by PC2, prediction by emotrics is a slightly weaker -- though confidence intervals overlap.
+
+```{r, message=FALSE, results='asis'}
+
+loo.log = function(df){ # Leave one out logistic regression with emotrics as predictor
+  df$group = as.numeric(df$group != 'TD')
+  frmla = as.formula(sprintf("group ~ %s", paste(emotrics, collapse=" + ")))
+  reslog = c()
+  for (i in 1:nrow(df)){ ## Leave one out CV
+    tmp_df = df[-i,]
+    reslog[i] = glm(frmla, family='binomial', data=tmp_df)$fitted.values
+  }
+  return(reslog)
+}
+
+emo_df$reslog = loo.log(emo_df)
+resROC_main_ps = roc(group ~ reslog, data=emo_df)
+
+sz_df = merge(sz_df, emotrics_df, by='bbl_id')
+sz_df$reslog = loo.log(sz_df)
+resROC_main_sz = roc(group ~ reslog, data=sz_df)
+
+cr_df = merge(cr_df, emotrics_df, by='bbl_id')
+cr_df$reslog = loo.log(cr_df)
+resROC_main_cr = roc(group ~ reslog, data=cr_df)
+
+legends = c('PS', 'SZ', 'CR')
+plotROCs(resROC_main_ps, resROC_main_sz, resROC_main_cr, main = 'ROC Curves of Emotrics predicting Status (AUC)', legends =  legends)
+```
+
+#### Psychosis Status
+
+```{r, results='asis'}
+ci(resROC_main_ps)
+```
+
+#### Schizophrenia Status 
+
+```{r, results='asis', }
+ci(resROC_main_sz)
+```
+
+#### Clinical Risk Status
+
+```{r, results='asis'}
+ci(resROC_main_cr)
+```
 
 ## 4. Predicting PS status based on adjusted PC2 
 
